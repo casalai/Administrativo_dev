@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulario de Administración de Clientes (con Historial)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .modal-overlay { transition: opacity 0.3s ease-in-out; }
+        .modal-content { transition: transform 0.3s ease-in-out; }
+        .form-section { scroll-margin-top: 80px; }
+        button:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
+        #main-content.disabled { pointer-events: none; opacity: 0.5; }
+        /* Nuevos estilos para el historial */
+        .history-card {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 0.75rem;
+        }
+        .history-table {
+            width: 100%;
+            font-size: 0.875rem;
+        }
+        .history-table th, .history-table td {
+            padding: 0.5rem;
+            text-align: left;
+        }
+        .history-table th {
+            background-color: #f3f4f6;
+        }
+        .history-table .field-name {
+            font-weight: 500;
+            color: #374151;
+        }
+        .history-table .old-value {
+            color: #dc2626;
+            word-break: break-all;
+        }
+        .history-table .new-value {
+            color: #16a34a;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <p id="loading-text" class="mt-2 text-gray-600">Conectando a la Base de Datos...</p>
+        </div>
+    </div>
+
+    <header class="bg-white shadow-md sticky top-0 z-30">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <h1 class="text-xl font-bold text-gray-800">Módulo de Clientes</h1>
+                <div class="flex items-center gap-3">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    <select id="user-select" class="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 font-medium">
+                        <option value="">Seleccione su usuario...</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main id="main-content" class="container mx-auto p-4 sm:p-6 lg:p-8 disabled">
+        <!-- VISTA DE LISTA DE CLIENTES (PRINCIPAL) -->
+        <div id="list-view" class="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+            <div class="flex justify-between items-center mb-4">
+                <input type="text" id="searchInput" placeholder="Buscar por nombre o RIF..." class="w-full md:w-1/2 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                <button onclick="createNewClient()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+                    Nuevo Cliente
+                </button>
+            </div>
+            <div class="overflow-x-auto border rounded-lg">
+                <table class="w-full text-sm text-left text-gray-500">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-6 py-3">Foto</th><th scope="col" class="px-6 py-3">ID</th><th scope="col" class="px-6 py-3">Nombre / Razón Social</th><th scope="col" class="px-6 py-3">RIF / Cédula</th><th scope="col" class="px-6 py-3">Tipo</th><th scope="col" class="px-6 py-3 text-right">Acciones</th></tr></thead>
+                    <tbody id="clientListTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VISTA DE FORMULARIO (OCULTA POR DEFECTO) -->
+        <div id="form-view" class="hidden bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+            <div class="mb-8 text-center"><h1 id="form-title" class="text-3xl font-bold text-gray-800">Administración de Clientes</h1><p class="text-gray-500 mt-2">Complete la información para registrar un nuevo cliente o editar uno existente.</p></div>
+            <form id="clientForm" class="space-y-8" novalidate>
+                <input type="hidden" id="currentClientId">
+                <div id="seccion1" class="form-section p-6 border border-gray-200 rounded-xl space-y-6 bg-gray-50/50">
+                    <h2 class="text-xl font-semibold text-gray-700 border-b pb-3">1. Información de Identificación y Contacto</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div><label for="clientIdDisplay" class="block text-sm font-medium text-gray-600 mb-1">ID Cliente</label><input type="text" id="clientIdDisplay" value="Generado al guardar" class="w-full bg-gray-200 border-gray-300 rounded-lg shadow-sm" readonly></div>
+                        <div class="relative">
+                            <label for="clientType" class="block text-sm font-medium text-gray-600 mb-1">Tipo de Cliente <span class="text-red-500">*</span></label>
+                            <div class="flex items-center space-x-2"><select id="clientType" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500" required></select><button type="button" onclick="openModal('modalClientType')" class="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg></button></div>
+                        </div>
+                        <div>
+                            <label for="rifNumber" class="block text-sm font-medium text-gray-600 mb-1">RIF / Cédula <span class="text-red-500">*</span></label>
+                            <div class="flex items-center"><span id="rifPrefix" class="px-3 py-2 bg-gray-200 text-gray-600 border border-r-0 border-gray-300 rounded-l-lg">-</span><input type="text" id="rifNumber" placeholder="12345678" class="w-full border-gray-300 rounded-r-lg shadow-sm focus:ring-blue-500 focus:border-blue-500" required><input type="hidden" id="rif"></div>
+                            <p id="rifError" class="text-red-500 text-xs mt-1 hidden">Este documento ya está registrado.</p>
+                        </div>
+                        <div><label for="companyName" class="block text-sm font-medium text-gray-600 mb-1">Nombre / Razón Social <span class="text-red-500">*</span></label><input type="text" id="companyName" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500" required></div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+                        <div class="space-y-4"><label class="block text-sm font-medium text-gray-600">Teléfonos <span class="text-red-500">*</span></label><div id="phonesContainer" class="space-y-3"></div><button type="button" onclick="addPhone()" class="text-sm font-medium text-blue-600 hover:text-blue-800 transition">+ Agregar otro teléfono</button></div>
+                        <div class="space-y-4"><label class="block text-sm font-medium text-gray-600">Correos Electrónicos</label><div id="emailsContainer" class="space-y-3"></div><button type="button" onclick="addEmail()" class="text-sm font-medium text-blue-600 hover:text-blue-800 transition">+ Agregar otro correo</button></div>
+                    </div>
+                    <div class="pt-6 border-t">
+                        <div class="space-y-4"><label class="block text-sm font-medium text-gray-600">Direcciones Fiscales <span class="text-red-500">*</span></label><div id="fiscalAddressContainer" class="space-y-3"></div><button type="button" onclick="addFiscalAddress()" class="text-sm font-medium text-blue-600 hover:text-blue-800 transition">+ Agregar otra dirección fiscal</button></div>
+                        <div class="mt-6"><label for="shippingAddress" class="block text-sm font-medium text-gray-600 mb-1">Dirección de Entrega / Domicilio</label><textarea id="shippingAddress" rows="3" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"></textarea><div class="mt-2 flex items-center"><input type="checkbox" id="useSameAddress" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"><label for="useSameAddress" class="ml-2 block text-sm text-gray-700">Usar la misma dirección fiscal principal</label></div></div>
+                    </div>
+                </div>
+                <div id="seccion2" class="form-section p-6 border border-gray-200 rounded-xl space-y-6 bg-gray-50/50"><h2 class="text-xl font-semibold text-gray-700 border-b pb-3">2. Personas de Contacto Adicionales</h2><div class="space-y-4"><div class="mt-2 flex items-center mb-4"><input type="checkbox" id="useMainContactInfo" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"><label for="useMainContactInfo" class="ml-2 block text-sm text-gray-700">Usar los datos principales del cliente como primer contacto</label></div><label class="block text-sm font-medium text-gray-600">Personas de Contacto</label><div id="contactPeopleContainer" class="space-y-3"></div><button type="button" onclick="addContactPerson()" class="text-sm font-medium text-blue-600 hover:text-blue-800 transition">+ Agregar otro contacto</button></div></div>
+                <div id="seccion3" class="form-section p-6 border border-gray-200 rounded-xl space-y-6 bg-gray-50/50">
+                    <h2 class="text-xl font-semibold text-gray-700 border-b pb-3">3. Información Comercial</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="relative">
+                            <label for="howHeard" class="block text-sm font-medium text-gray-600 mb-1">¿Cómo nos conoció? <span class="text-red-500">*</span></label>
+                            <div class="flex items-center space-x-2"><select id="howHeard" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500" required></select><button type="button" onclick="openModal('modalMediaSource')" class="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg></button></div>
+                        </div>
+                        <div><label for="referredBy" class="block text-sm font-medium text-gray-600 mb-1">Referido por</label><input type="text" id="referredBy" placeholder="Buscar cliente existente..." class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"></div>
+                    </div>
+                </div>
+                <div id="seccion4" class="form-section p-6 border border-gray-200 rounded-xl space-y-6 bg-gray-50/50">
+                    <h2 class="text-xl font-semibold text-gray-700 border-b pb-3">4. Detalles Adicionales</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="space-y-6">
+                            <div class="flex items-center"><input id="requiresInvoice" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"><label for="requiresInvoice" class="ml-3 block text-sm font-medium text-gray-700">¿Requiere Factura Fiscal?</label></div>
+                            <div class="flex items-center"><input id="isRetentionAgent" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"><label for="isRetentionAgent" class="ml-3 block text-sm font-medium text-gray-700">¿Es Agente de Retención?</label></div>
+                            <div><label for="observations" class="block text-sm font-medium text-gray-600 mb-1">Observaciones</label><textarea id="observations" rows="4" class="w-full border-gray-300 rounded-lg shadow-sm"></textarea></div>
+                        </div>
+                        <div class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-600 mb-2">Fotografía del Cliente</label>
+                                <div id="imagePreviewContainer" class="w-full h-48 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-center relative hidden p-2"><img id="imagePreview" src="#" alt="Vista previa" class="max-h-full max-w-full rounded-lg"><button type="button" onclick="removeImage()" class="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button></div>
+                                <span id="imageFileName" class="text-xs text-gray-500 mt-2 block"></span>
+                                <div id="imageUploadBox">
+                                    <div class="flex items-center justify-center gap-4"><label for="clientPhoto" class="cursor-pointer w-full h-48 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center hover:bg-gray-50"><svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg><p class="mt-2 text-sm text-gray-500">Cargar imagen</p></label><button type="button" id="takePhotoBtn" class="cursor-pointer w-full h-48 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center hover:bg-gray-50"><svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg><p class="mt-2 text-sm text-gray-500">Hacer foto</p></button></div>
+                                    <input type="file" id="clientPhoto" class="hidden" accept="image/*">
+                                </div>
+                            </div>
+                            <div class="space-y-4 pt-4 border-t">
+                                <h3 class="text-md font-semibold text-gray-700">Controles de Administración</h3>
+                                <div class="flex items-center justify-between"><span class="text-sm font-medium text-gray-700">Estado</span><label class="relative inline-flex items-center cursor-pointer"><input id="clientStatus" type="checkbox" value="" class="sr-only peer" checked><div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div><span id="clientStatusLabel" class="ml-3 text-sm font-medium text-gray-900">Activo</span></label></div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                
+                <!-- NUEVA SECCIÓN DE HISTORIAL -->
+                <div id="history-section" class="mt-8 pt-6 border-t hidden">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4">Historial de Cambios</h2>
+                    <div id="history-container" class="space-y-4 max-h-96 overflow-y-auto pr-4">
+                        <!-- El historial se renderizará aquí -->
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-4 mt-8 pt-6 border-t">
+                    <button type="button" onclick="switchView('list')" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100">Volver a la Lista</button>
+                    <button id="submit-button" type="submit" form="clientForm" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Guardar Cliente</button>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <!-- Modales -->
+    <div id="modalClientType" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-40" onclick="closeModal('modalClientType')"><div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-3xl transform scale-95" onclick="event.stopPropagation()"><div class="p-6"><h3 class="text-lg font-medium text-gray-900 mb-4">Gestionar Tipos de Cliente</h3><div class="space-y-4"><div class="flex justify-between items-center gap-2"><div class="flex gap-2 items-center"><input type="text" id="newClientTypePrefixInput" placeholder="Prefijo (J,V,E)" class="w-20 border-gray-300 rounded-lg shadow-sm"><input type="text" id="newClientTypeInput" placeholder="Descripción del nuevo tipo" class="w-full border-gray-300 rounded-lg shadow-sm"><button onclick="addItem('client_types')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 whitespace-nowrap">Agregar</button></div><button onclick="sortByUsage('client_types')" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9M3 12h9m-9 4h13m0-4l3 3m0 0l3-3m-3 3v-6" /></svg> Más Usados</button></div><div class="max-h-60 overflow-y-auto border rounded-lg"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-4 py-3">Orden</th><th scope="col" class="px-4 py-3">Prefijo</th><th scope="col" class="px-6 py-3">Descripción</th><th scope="col" class="px-6 py-3">Activo</th><th scope="col" class="px-6 py-3 text-center">Uso</th><th scope="col" class="px-6 py-3 text-right">Acciones</th></tr></thead><tbody id="client_typesTableBody"></tbody></table></div></div><div class="mt-6 text-right"><button onclick="closeModal('modalClientType')" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cerrar</button></div></div></div></div>
+    <div id="modalMediaSource" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-40" onclick="closeModal('modalMediaSource')"><div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl transform scale-95" onclick="event.stopPropagation()"><div class="p-6"><h3 class="text-lg font-medium text-gray-900 mb-4">Gestionar Medios Publicitarios</h3><div class="space-y-4"><div class="flex justify-between items-center gap-2"><div class="flex gap-2"><input type="text" id="newMediaSourceInput" placeholder="Descripción del nuevo medio" class="w-full border-gray-300 rounded-lg shadow-sm"><button onclick="addItem('media_sources')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Agregar</button></div><button onclick="sortByUsage('media_sources')" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9M3 12h9m-9 4h13m0-4l3 3m0 0l3-3m-3 3v-6" /></svg> Más Usados</button></div><div class="max-h-60 overflow-y-auto border rounded-lg"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-4 py-3">Orden</th><th scope="col" class="px-6 py-3">Descripción</th><th scope="col" class="px-6 py-3">Activo</th><th scope="col" class="px-6 py-3 text-center">Uso</th><th scope="col" class="px-6 py-3 text-right">Acciones</th></tr></thead><tbody id="media_sourcesTableBody"></tbody></table></div></div><div class="mt-6 text-right"><button onclick="closeModal('modalMediaSource')" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cerrar</button></div></div></div></div>
+    <div id="cameraModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-75 flex-col items-center justify-center p-4 hidden z-40"><video id="cameraFeed" class="w-full max-w-lg rounded-lg" autoplay playsinline></video><canvas id="cameraCanvas" class="hidden"></canvas><div class="mt-4 flex gap-4"><button id="captureBtn" class="px-6 py-3 bg-blue-600 text-white rounded-full font-semibold hover:bg-blue-700">Tomar Foto</button><button id="cancelCameraBtn" class="px-6 py-3 bg-red-500 text-white rounded-full font-semibold hover:bg-red-600">Cancelar</button></div></div>
+    <div id="confirmDeleteModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50"><div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-sm transform scale-95" onclick="event.stopPropagation()"><div class="p-6 text-center"><svg class="mx-auto mb-4 h-14 w-14 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg><h3 class="mb-5 text-lg font-normal text-gray-600">¿Está seguro de que desea eliminar este elemento?</h3><p class="mb-6 text-sm text-gray-500">Esta acción no se puede deshacer.</p><div class="flex justify-center gap-4"><button id="cancelDeleteBtn" class="px-6 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 focus:z-10">Cancelar</button><button id="confirmDeleteBtn" class="px-6 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none">Sí, eliminar</button></div></div></div></div>
+    <div id="alertModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50"><div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-sm transform scale-95" onclick="event.stopPropagation()"><div class="p-6 text-center"><svg class="mx-auto mb-4 h-14 w-14 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg><h3 id="alertModalTitle" class="mb-5 text-lg font-semibold text-gray-800">Acción no permitida</h3><p id="alertModalMessage" class="mb-6 text-sm text-gray-500">El elemento seleccionado está en uso y no puede ser eliminado.</p><div class="flex justify-center gap-4"><button id="alertModalOkBtn" class="px-8 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none">Entendido</button></div></div></div></div>
+    <div id="successModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50"><div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-sm transform scale-95" onclick="event.stopPropagation()"><div class="p-6 text-center"><svg class="mx-auto mb-4 h-14 w-14 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><h3 id="successModalTitle" class="mb-5 text-lg font-semibold text-gray-800">¡Éxito!</h3><p id="successModalMessage" class="mb-6 text-sm text-gray-500">La operación se completó correctamente.</p><div class="flex justify-center gap-4"><button id="successModalOkBtn" class="px-8 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none">Aceptar</button></div></div></div></div>
+    <div id="photoViewerModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden z-50" onclick="closeModal('photoViewerModal')"><div class="modal-content relative transform scale-95" onclick="event.stopPropagation()"><img id="fullSizeImage" src="" alt="Foto del Cliente" class="max-w-[90vw] max-h-[80vh] rounded-lg shadow-lg"><button onclick="closeModal('photoViewerModal')" class="absolute -top-4 -right-4 bg-white text-gray-800 rounded-full p-2 hover:bg-gray-200 transition"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button></div></div>
+    
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+<script>
+    const firebaseConfig = { apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A", authDomain: "sistema-productividad-equipo.firebaseapp.com", projectId: "sistema-productividad-equipo", storageBucket: "sistema-productividad-equipo.appspot.com", messagingSenderId: "196802708765", appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const employeesCol = db.collection('employees');
+    const clientsCol = db.collection('clients');
+    const clientTypesCol = db.collection('client_types');
+    const mediaSourcesCol = db.collection('media_sources');
+    const historyCol = db.collection('client_history');
+
+    let currentUserId = null;
+    let employeesMap = {};
+    let localClientsCache = [];
+    const dataMap = {
+        client_types: { data: [], selectEl: document.getElementById('clientType'), tableBodyEl: document.getElementById('client_typesTableBody'), inputEl: document.getElementById('newClientTypeInput'), prefixInputEl: document.getElementById('newClientTypePrefixInput'), collection: clientTypesCol },
+        media_sources: { data: [], selectEl: document.getElementById('howHeard'), tableBodyEl: document.getElementById('media_sourcesTableBody'), inputEl: document.getElementById('newMediaSourceInput'), collection: mediaSourcesCol }
+    };
+    let itemToDelete = { type: null, id: null };
+    let currentlyEditing = { type: null, id: null };
+    let fiscalAddressCounter = 1;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const userSelect = document.getElementById('user-select');
+        const mainContent = document.getElementById('main-content');
+        try {
+            const employeesSnap = await employeesCol.where('is_active', '==', true).get();
+            employeesSnap.docs.forEach(doc => {
+                employeesMap[doc.id] = doc.data();
+                const option = new Option(doc.data().name, doc.id);
+                userSelect.add(option);
+            });
+        } catch(e) { console.error("Error loading employees", e); document.getElementById('loading-text').textContent = 'Error al cargar usuarios.'; return; }
+        userSelect.addEventListener('change', () => { currentUserId = userSelect.value; if (currentUserId) { mainContent.classList.remove('disabled'); initializeDataListeners(); } else { mainContent.classList.add('disabled'); } });
+        document.getElementById('loading-overlay').style.display = 'none';
+        document.getElementById('confirmDeleteBtn').addEventListener('click', performDelete);
+        document.getElementById('cancelDeleteBtn').addEventListener('click', () => closeModal('confirmDeleteModal'));
+        document.getElementById('alertModalOkBtn').addEventListener('click', () => closeModal('alertModal'));
+        document.getElementById('successModalOkBtn').addEventListener('click', () => { closeModal('successModal'); switchView('list'); });
+        document.getElementById('searchInput').addEventListener('input', e => { const searchTerm = e.target.value.toLowerCase(); const filteredClients = localClientsCache.filter(c => c.companyName.toLowerCase().includes(searchTerm) || c.rif.toLowerCase().includes(searchTerm)); renderClientList(filteredClients); });
+        document.getElementById('clientType').addEventListener('change', updateRifPrefix);
+        document.getElementById('useSameAddress').addEventListener('change', function() { const shippingAddress = document.getElementById('shippingAddress'); if (this.checked) { const mainAddressRadio = document.querySelector('input[name="mainAddress"]:checked'); let mainAddressText = mainAddressRadio ? mainAddressRadio.closest('.fiscal-address-item').querySelector('textarea').value : ''; shippingAddress.value = mainAddressText; shippingAddress.readOnly = true; shippingAddress.classList.add('bg-gray-100'); } else { shippingAddress.value = ''; shippingAddress.readOnly = false; shippingAddress.classList.remove('bg-gray-100'); } });
+        document.getElementById('useMainContactInfo').addEventListener('change', function() { const firstContact = document.querySelector('#contactPeopleContainer .contact-person-item'); if (!firstContact) return; const [nameInput, phoneInput] = firstContact.querySelectorAll('input'); if (this.checked) { nameInput.value = document.getElementById('companyName').value; const firstPhone = document.querySelector('#phonesContainer .phone-item input[name="phone[]"]'); phoneInput.value = firstPhone ? firstPhone.value : ''; nameInput.readOnly = true; phoneInput.readOnly = true; nameInput.classList.add('bg-gray-100'); phoneInput.classList.add('bg-gray-100'); } else { nameInput.value = ''; phoneInput.value = ''; nameInput.readOnly = false; phoneInput.readOnly = false; nameInput.classList.remove('bg-gray-100'); phoneInput.classList.remove('bg-gray-100'); } });
+    });
+
+    function initializeDataListeners() {
+        switchView('list');
+        ['client_types', 'media_sources'].forEach(type => {
+            const query = dataMap[type].collection.orderBy('sortOrder');
+            query.onSnapshot(snapshot => {
+                dataMap[type].data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderOptions(type);
+                renderTable(type);
+                updateRifPrefix();
+            }, err => console.error(`Error fetching ${type}:`, err));
+        });
+        clientsCol.orderBy('createdAt', 'desc').onSnapshot(snapshot => { localClientsCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); renderClientList(); }, err => console.error("Error fetching clients:", err));
+    }
+
+    function switchView(viewName) {
+        const formView = document.getElementById('form-view');
+        const listView = document.getElementById('list-view');
+        if (viewName === 'list') {
+            formView.classList.add('hidden');
+            listView.classList.remove('hidden');
+            renderClientList();
+        } else {
+            listView.classList.add('hidden');
+            formView.classList.remove('hidden');
+        }
+    }
+    
+    function renderClientList(clientList = localClientsCache) {
+        const tableBody = document.getElementById('clientListTableBody');
+        if (clientList.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500">No se encontraron clientes.</td></tr>';
+            return;
+        }
+        
+        tableBody.innerHTML = clientList.map(client => {
+            const clientType = dataMap.client_types.data.find(ct => ct.id === client.clientTypeId)?.text || 'N/A';
+            let photoHtml = '';
+            if (client.photoUrl && client.photoUrl !== '#') {
+                photoHtml = `<img src="${client.photoUrl}" alt="Foto" onclick="viewPhoto('${client.id}', event)" class="h-10 w-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-blue-500">`;
+            } else {
+                photoHtml = `<div class="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg></div>`;
+            }
+            
+            const sanitizedCompanyName = (client.companyName || '').replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+            return `
+                <tr class="bg-white border-b hover:bg-gray-50">
+                    <td class="px-6 py-4">${photoHtml}</td>
+                    <td class="px-6 py-4 font-medium text-gray-900">${(client.id || '').substring(0, 8)}...</td>
+                    <td class="px-6 py-4">${sanitizedCompanyName}</td>
+                    <td class="px-6 py-4">${client.rif || ''}</td>
+                    <td class="px-6 py-4">${clientType}</td>
+                    <td class="px-6 py-4 text-right">
+                        <button onclick="loadClientForEdit('${client.id}')" class="font-medium text-blue-600 hover:underline">Ver/Editar</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function updateRifPrefix() { const clientTypeId = document.getElementById('clientType').value; const type = dataMap.client_types.data.find(t => t.id === clientTypeId); document.getElementById('rifPrefix').textContent = type?.rifPrefix || '-'; }
+    
+    async function loadClientForEdit(clientId) {
+        const client = localClientsCache.find(c => c.id === clientId);
+        if (!client) return;
+        resetForm();
+        document.getElementById('currentClientId').value = client.id;
+        document.getElementById('clientIdDisplay').value = client.id;
+        document.getElementById('clientType').value = client.clientTypeId;
+        const rifParts = (client.rif || '').split('-');
+        const number = rifParts.length > 1 ? rifParts.slice(1).join('-') : client.rif;
+        updateRifPrefix();
+        document.getElementById('rifNumber').value = number;
+        document.getElementById('companyName').value = client.companyName;
+
+        if (client.phones && client.phones.length > 0) { client.phones.forEach(p => addPhone(p.number, p.desc)); } else { addPhone(); }
+        if (client.emails && client.emails.length > 0) { client.emails.forEach(e => addEmail(e)); } else { addEmail(); }
+        if (client.fiscalAddresses && client.fiscalAddresses.length > 0) { client.fiscalAddresses.forEach(a => addFiscalAddress(a.text, a.isMain)); } else { addFiscalAddress('', true); }
+        if (client.contactPeople && client.contactPeople.length > 0) { client.contactPeople.forEach(p => addContactPerson(p.name, p.phone)); } else { addContactPerson(); }
+
+        document.getElementById('shippingAddress').value = client.shippingAddress;
+        document.getElementById('useSameAddress').checked = client.useSameAddress;
+        document.getElementById('howHeard').value = client.mediaSourceId;
+        document.getElementById('referredBy').value = client.referredBy;
+        document.getElementById('requiresInvoice').checked = client.requiresInvoice;
+        document.getElementById('isRetentionAgent').checked = client.isRetentionAgent;
+        document.getElementById('clientStatus').checked = client.status;
+        document.getElementById('observations').value = client.observations;
+        if (client.photoUrl && client.photoUrl !== '#') { document.getElementById('imagePreview').src = client.photoUrl; document.getElementById('imagePreviewContainer').classList.remove('hidden'); document.getElementById('imageUploadBox').classList.add('hidden'); document.getElementById('imageFileName').textContent = 'Imagen guardada.'; }
+        document.getElementById('form-title').textContent = 'Editar Cliente';
+        document.getElementById('submit-button').textContent = 'Actualizar Cliente';
+        
+        document.getElementById('history-section').classList.remove('hidden');
+        await renderClientHistory(clientId);
+
+        switchView('form');
+    }
+    
+    function createNewClient() {
+        resetForm();
+        addPhone();
+        addEmail();
+        addFiscalAddress('', true);
+        addContactPerson();
+        document.getElementById('history-section').classList.add('hidden');
+        document.getElementById('history-container').innerHTML = '<p class="text-gray-500 text-center">No hay historial para clientes nuevos.</p>';
+        switchView('form');
+    }
+
+    function resetForm() {
+        document.getElementById('clientForm').reset();
+        document.getElementById('currentClientId').value = '';
+        document.getElementById('phonesContainer').innerHTML = '';
+        document.getElementById('emailsContainer').innerHTML = '';
+        document.getElementById('fiscalAddressContainer').innerHTML = '';
+        document.getElementById('contactPeopleContainer').innerHTML = '';
+        fiscalAddressCounter = 0;
+        removeImage();
+        document.getElementById('form-title').textContent = 'Registrar Nuevo Cliente';
+        document.getElementById('submit-button').textContent = 'Guardar Cliente';
+        document.getElementById('clientIdDisplay').value = 'Generado al guardar';
+        document.getElementById('rifNumber').value = '';
+        const shippingAddress = document.getElementById('shippingAddress');
+        shippingAddress.readOnly = false;
+        shippingAddress.classList.remove('bg-gray-100');
+        document.getElementById('useMainContactInfo').checked = false;
+        updateRifPrefix();
+    }
+
+    function getFormFieldName(key) {
+        const names = {
+            companyName: 'Nombre/Razón Social', clientTypeId: 'Tipo de Cliente', mediaSourceId: 'Medio Publicitario',
+            rif: 'RIF/Cédula', phones: 'Teléfonos', emails: 'Correos', fiscalAddresses: 'Direcciones Fiscales',
+            shippingAddress: 'Dirección de Entrega', status: 'Estado', requiresInvoice: 'Requiere Factura',
+            isRetentionAgent: 'Agente de Retención', observations: 'Observaciones', referredBy: 'Referido Por',
+            contactPeople: 'Personas de Contacto', photoUrl: 'Foto del Cliente'
+        };
+        return names[key] || key;
+    }
+
+    function formatHistoryValue(field, value) {
+        if (value === null || typeof value === 'undefined' || value === '') {
+            return '<span class="italic text-gray-500">Vacío</span>';
+        }
+        if (typeof value === 'boolean') {
+            return value ? 'Sí' : 'No';
+        }
+        if (['clientTypeId', 'mediaSourceId'].includes(field)) {
+            const map = field === 'clientTypeId' ? dataMap.client_types.data : dataMap.media_sources.data;
+            return map.find(i => i.id === value)?.text || value;
+        }
+        if (Array.isArray(value)) {
+            if (value.length === 0) return '<span class="italic text-gray-500">Vacío</span>';
+            if (field === 'phones') {
+                return value.map(p => `${p.number}${p.desc ? ` (${p.desc})` : ''}`).join(', ');
+            }
+            if (field === 'contactPeople') {
+                return value.map(p => `${p.name}${p.phone ? ` (${p.phone})` : ''}`).join(', ');
+            }
+            if (field === 'fiscalAddresses') {
+                return value.map(a => `${a.text}${a.isMain ? ' (Principal)' : ''}`).join('; ');
+            }
+            return value.join(', ');
+        }
+         if (field === 'photoUrl') {
+            return value ? 'Imagen asignada' : 'Sin imagen';
+        }
+        return value;
+    }
+
+    async function renderClientHistory(clientId) {
+        const historyContainer = document.getElementById('history-container');
+        historyContainer.innerHTML = '<p class="text-gray-500 text-center">Cargando historial...</p>';
+        const snapshot = await historyCol.where('clientId', '==', clientId).orderBy('timestamp', 'desc').get();
+        
+        if (snapshot.empty) {
+            historyContainer.innerHTML = '<p class="text-gray-500 text-center">No se encontraron registros de historial.</p>';
+            return;
+        }
+
+        let historyHtml = '';
+        snapshot.docs.forEach(doc => {
+            const log = doc.data();
+            const userName = employeesMap[log.userId]?.name || 'Usuario Desconocido';
+            const date = log.timestamp.toDate().toLocaleString('es-VE', { dateStyle: 'long', timeStyle: 'short' });
+            
+            let contentHtml = '';
+            if (log.eventType === 'creation') {
+                contentHtml = `<p class="font-medium text-gray-800">Cliente fue creado.</p>`;
+            } else if (log.eventType === 'update' && log.changes) {
+                const changesTable = log.changes.map(change => {
+                    const fieldName = getFormFieldName(change.field);
+                    const oldValueFormatted = formatHistoryValue(change.field, change.oldValue);
+                    const newValueFormatted = formatHistoryValue(change.field, change.newValue);
+                    
+                    return `
+                        <tr>
+                            <td class="field-name align-top">${fieldName}</td>
+                            <td class="old-value align-top">${oldValueFormatted}</td>
+                            <td class="new-value align-top">${newValueFormatted}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                contentHtml = `
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th class="w-1/4">Campo</th>
+                                <th class="w-2/5">Valor Anterior</th>
+                                <th class="w-2/5">Valor Nuevo</th>
+                            </tr>
+                        </thead>
+                        <tbody>${changesTable}</tbody>
+                    </table>
+                `;
+            }
+
+            historyHtml += `
+                <div class="history-card">
+                    <div class="history-header">
+                        <span class="text-sm font-medium text-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" /></svg>
+                            ${userName}
+                        </span>
+                        <span class="text-sm text-gray-500">
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-1 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg>
+                            ${date}
+                        </span>
+                    </div>
+                    ${contentHtml}
+                </div>
+            `;
+        });
+        historyContainer.innerHTML = historyHtml;
+    }
+
+
+    document.getElementById('clientForm').addEventListener('submit', async function(event) {
+        event.preventDefault(); if (!currentUserId) { showAlertDialog('Usuario no seleccionado', 'Por favor, seleccione un usuario antes de guardar.'); return; }
+        const submitButton = document.getElementById('submit-button'); submitButton.disabled = true; submitButton.textContent = 'Guardando...';
+        const currentId = document.getElementById('currentClientId').value;
+        
+        const clientData = {
+            clientTypeId: document.getElementById('clientType').value,
+            mediaSourceId: document.getElementById('howHeard').value,
+            rif: `${document.getElementById('rifPrefix').textContent}-${document.getElementById('rifNumber').value.trim()}`,
+            companyName: document.getElementById('companyName').value.trim(),
+            phones: Array.from(document.querySelectorAll('#phonesContainer .phone-item')).map(item => ({ number: item.querySelector('input[name="phone[]"]').value, desc: item.querySelector('input[name="phoneDesc[]"]').value })).filter(p => p.number),
+            emails: Array.from(document.querySelectorAll('#emailsContainer .email-item input')).map(input => input.value).filter(e => e),
+            fiscalAddresses: Array.from(document.querySelectorAll('#fiscalAddressContainer .fiscal-address-item')).map(item => ({ text: item.querySelector('textarea').value, isMain: item.querySelector('input[type="radio"]').checked })).filter(a => a.text),
+            shippingAddress: document.getElementById('shippingAddress').value,
+            useSameAddress: document.getElementById('useSameAddress').checked,
+            contactPeople: Array.from(document.querySelectorAll('#contactPeopleContainer .contact-person-item')).map(item => ({ name: item.querySelector('input[name="contactName[]"]').value, phone: item.querySelector('input[name="contactPhone[]"]').value })).filter(p => p.name || p.phone),
+            referredBy: document.getElementById('referredBy').value,
+            requiresInvoice: document.getElementById('requiresInvoice').checked,
+            isRetentionAgent: document.getElementById('isRetentionAgent').checked,
+            status: document.getElementById('clientStatus').checked,
+            observations: document.getElementById('observations').value,
+            photoUrl: document.getElementById('imagePreview').src.startsWith('data:image') ? document.getElementById('imagePreview').src : (document.getElementById('imagePreview').src.startsWith('http') ? document.getElementById('imagePreview').src : null),
+        };
+
+        try {
+            if (currentId) { // UPDATE
+                const oldClient = localClientsCache.find(c => c.id === currentId);
+                const changes = [];
+                const keysToCompare = Object.keys(clientData);
+
+                for (const key of keysToCompare) {
+                    let oldValue = oldClient[key];
+                    let newValue = clientData[key];
+                    
+                    let oldValueStr = (Array.isArray(oldValue) || (typeof oldValue === 'object' && oldValue !== null)) ? JSON.stringify(oldValue) : String(oldValue ?? '');
+                    let newValueStr = (Array.isArray(newValue) || (typeof newValue === 'object' && newValue !== null)) ? JSON.stringify(newValue) : String(newValue ?? '');
+
+                    if (oldValueStr !== newValueStr) {
+                        changes.push({ field: key, oldValue: oldClient[key], newValue: clientData[key] });
+                    }
+                }
+
+                if (changes.length > 0) {
+                    clientData.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                    clientData.updatedBy = currentUserId;
+                    await clientsCol.doc(currentId).update(clientData);
+                    await historyCol.add({ clientId: currentId, eventType: 'update', timestamp: firebase.firestore.FieldValue.serverTimestamp(), userId: currentUserId, changes: changes });
+                    showSuccessModal('Cliente actualizado con éxito.');
+                } else {
+                    showAlertDialog('Sin cambios', 'No se detectaron cambios para guardar.');
+                }
+
+            } else { // CREATE
+                clientData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                clientData.createdBy = currentUserId;
+                const docRef = await clientsCol.add(clientData);
+                await clientsCol.doc(docRef.id).update({ id: docRef.id });
+                await historyCol.add({ clientId: docRef.id, eventType: 'creation', timestamp: firebase.firestore.FieldValue.serverTimestamp(), userId: currentUserId, snapshot: clientData });
+                
+                const typeRef = clientTypesCol.doc(clientData.clientTypeId); await typeRef.update({ usageCount: firebase.firestore.FieldValue.increment(1) });
+                const mediaRef = mediaSourcesCol.doc(clientData.mediaSourceId); await mediaRef.update({ usageCount: firebase.firestore.FieldValue.increment(1) });
+                showSuccessModal('Cliente registrado con éxito.');
+            }
+        } catch (error) { console.error("Error saving client:", error); showAlertDialog('Error', 'No se pudo guardar el cliente.'); } 
+        finally { submitButton.disabled = false; submitButton.textContent = currentId ? 'Actualizar Cliente' : 'Guardar Cliente'; }
+    });
+    
+    function renderTable(type) { if (type === 'client_types') { renderClientTypesTable(); } else if (type === 'media_sources') { renderMediaSourcesTable(); } }
+    
+    function renderClientTypesTable() {
+        const { data, tableBodyEl } = dataMap.client_types; tableBodyEl.innerHTML = '';
+        data.forEach((item, index) => {
+            const isEditing = currentlyEditing.type === 'client_types' && currentlyEditing.id === item.id; const row = document.createElement('tr'); row.className = 'bg-white border-b';
+            const upSVG = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg>`; const downSVG = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
+            if (isEditing) {
+                row.innerHTML = `<td class="px-4 py-4 opacity-30"><div class="flex items-center gap-1"><button disabled class="p-1 text-gray-400">${upSVG}</button><button disabled class="p-1 text-gray-400">${downSVG}</button></div></td><td class="px-4 py-4"><input type="text" id="editPrefix-${item.id}" value="${item.rifPrefix || ''}" class="w-20 border-blue-400 ring-1 ring-blue-400 rounded-lg p-2"></td><td class="px-6 py-4"><input type="text" id="editText-${item.id}" value="${item.text}" class="w-full border-blue-400 ring-1 ring-blue-400 rounded-lg p-2"></td><td colspan="2"></td><td class="px-6 py-4 text-right flex gap-2 items-center"><button onclick="saveItem('client_types', '${item.id}')" class="font-medium text-green-600 hover:underline">Guardar</button><button onclick="cancelEdit()" class="font-medium text-gray-600 hover:underline">Cancelar</button></td>`;
+            } else {
+                row.innerHTML = `<td class="px-4 py-4"><div class="flex items-center gap-1"><button onclick="moveItem('client_types', '${item.id}', 'up')" class="p-1 text-gray-400 hover:text-blue-600" ${index === 0 ? 'disabled' : ''}>${upSVG}</button><button onclick="moveItem('client_types', '${item.id}', 'down')" class="p-1 text-gray-400 hover:text-blue-600" ${index === data.length - 1 ? 'disabled' : ''}>${downSVG}</button></div></td><td class="px-4 py-4 font-mono font-bold">${item.rifPrefix || '-'}</td><td class="px-6 py-4">${item.text}</td><td class="px-6 py-4"><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" class="sr-only peer" ${item.active ? 'checked' : ''} onchange="toggleItemStatus('client_types', '${item.id}')"><div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div></label></td><td class="px-6 py-4 text-center">${item.usageCount || 0}</td><td class="px-6 py-4 text-right flex gap-4 items-center"><button onclick="editItem('client_types', '${item.id}')" class="font-medium text-blue-600 hover:underline">Editar</button><button onclick="promptDeleteItem('client_types', '${item.id}')" class="font-medium text-red-600 hover:underline">Eliminar</button></td>`;
+            }
+            tableBodyEl.appendChild(row);
+        });
+    }
+
+    function renderMediaSourcesTable() {
+        const { data, tableBodyEl } = dataMap.media_sources;
+        tableBodyEl.innerHTML = '';
+        data.forEach((item, index) => {
+            const isEditing = currentlyEditing.type === 'media_sources' && currentlyEditing.id === item.id;
+            const row = document.createElement('tr');
+            row.className = 'bg-white border-b';
+            const upSVG = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg>`;
+            const downSVG = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
+            if (isEditing) {
+                 row.innerHTML = `<td class="px-4 py-4 opacity-30"><div class="flex items-center gap-1"><button disabled class="p-1 text-gray-400">${upSVG}</button><button disabled class="p-1 text-gray-400">${downSVG}</button></div></td><td class="px-6 py-4" colspan="3"><input type="text" id="editText-${item.id}" value="${item.text}" class="w-full border-blue-400 ring-1 ring-blue-400 rounded-lg p-2"></td><td class="px-6 py-4 text-right flex gap-2 items-center"><button onclick="saveItem('media_sources', '${item.id}')" class="font-medium text-green-600 hover:underline">Guardar</button><button onclick="cancelEdit()" class="font-medium text-gray-600 hover:underline">Cancelar</button></td>`;
+            } else {
+                row.innerHTML = `<td class="px-4 py-4"><div class="flex items-center gap-1"><button onclick="moveItem('media_sources', '${item.id}', 'up')" class="p-1 text-gray-400 hover:text-blue-600" ${index === 0 ? 'disabled' : ''}>${upSVG}</button><button onclick="moveItem('media_sources', '${item.id}', 'down')" class="p-1 text-gray-400 hover:text-blue-600" ${index === data.length - 1 ? 'disabled' : ''}>${downSVG}</button></div></td><td class="px-6 py-4">${item.text}</td><td class="px-6 py-4"><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" class="sr-only peer" ${item.active ? 'checked' : ''} onchange="toggleItemStatus('media_sources', '${item.id}')"><div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div></label></td><td class="px-6 py-4 text-center">${item.usageCount || 0}</td><td class="px-6 py-4 text-right flex gap-4 items-center"><button onclick="editItem('media_sources', '${item.id}')" class="font-medium text-blue-600 hover:underline">Editar</button><button onclick="promptDeleteItem('media_sources', '${item.id}')" class="font-medium text-red-600 hover:underline">Eliminar</button></td>`;
+            }
+            tableBodyEl.appendChild(row);
+        });
+    }
+
+    async function addItem(type) { if (!currentUserId) return; const { collection, inputEl, prefixInputEl } = dataMap[type]; const newText = inputEl.value.trim(); let newPrefix = null; if (type === 'client_types') { newPrefix = prefixInputEl.value.trim().toUpperCase(); } if (newText && (type !== 'client_types' || newPrefix)) { inputEl.disabled = true; if (prefixInputEl) prefixInputEl.disabled = true; try { const maxOrder = dataMap[type].data.reduce((max, item) => Math.max(max, item.sortOrder || 0), 0); let newItemData = { text: newText, active: true, usageCount: 0, sortOrder: maxOrder + 1, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUserId }; if (type === 'client_types') { newItemData.rifPrefix = newPrefix; } await collection.add(newItemData); inputEl.value = ''; if (prefixInputEl) { prefixInputEl.value = ''; } } catch (error) { console.error("Error adding item:", error); } finally { inputEl.disabled = false; if (prefixInputEl) { prefixInputEl.disabled = false; } inputEl.focus(); } } }
+    
+    function viewPhoto(clientId, event) { event.stopPropagation(); const client = localClientsCache.find(c => c.id === clientId); if (client && client.photoUrl && client.photoUrl !== '#') { document.getElementById('fullSizeImage').src = client.photoUrl; openModal('photoViewerModal'); } }
+    function isItemInUse(type, itemId) { return (type === 'client_types') ? localClientsCache.some(c => c.clientTypeId === itemId) : localClientsCache.some(c => c.mediaSourceId === itemId); }
+    async function moveItem(type, itemId, direction) { const { data, collection } = dataMap[type]; const itemIndex = data.findIndex(d => d.id === itemId); if (itemIndex === -1) return; let otherItemIndex = -1; if (direction === 'up' && itemIndex > 0) otherItemIndex = itemIndex - 1; if (direction === 'down' && itemIndex < data.length - 1) otherItemIndex = itemIndex + 1; if (otherItemIndex === -1) return; const item = data[itemIndex]; const otherItem = data[otherItemIndex]; const batch = db.batch(); batch.update(collection.doc(item.id), { sortOrder: otherItem.sortOrder }); batch.update(collection.doc(otherItem.id), { sortOrder: item.sortOrder }); await batch.commit(); }
+    async function sortByUsage(type) { const { data, collection } = dataMap[type]; const sorted = [...data].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)); const batch = db.batch(); sorted.forEach((item, index) => { batch.update(collection.doc(item.id), { sortOrder: index + 1 }); }); await batch.commit(); }
+    function renderOptions(type) { const { data, selectEl } = dataMap[type]; const currentValue = selectEl.value; selectEl.innerHTML = '<option value="">Seleccione una opción...</option>'; data.forEach(item => { if (item.active) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.text; selectEl.appendChild(option); } }); if (data.find(d => d.id == currentValue && d.active)) { selectEl.value = currentValue; } }
+    function promptDeleteItem(type, id) { const item = dataMap[type].data.find(d => d.id === id); if (isItemInUse(type, id)) { showAlertDialog('Acción no permitida', `El elemento "${item.text}" está siendo utilizado y no puede ser eliminado.`); return; } itemToDelete = { type, id }; openModal('confirmDeleteModal'); }
+    async function performDelete() { const { type, id } = itemToDelete; if (type && id) { await dataMap[type].collection.doc(id).delete(); closeModal('confirmDeleteModal'); } itemToDelete = { type: null, id: null }; }
+    async function toggleItemStatus(type, id) { if (!currentUserId) return; const item = dataMap[type].data.find(d => d.id === id); await dataMap[type].collection.doc(id).update({ active: !item.active, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: currentUserId }); }
+    function editItem(type, id) { currentlyEditing = { type, id }; renderTable(type); const input = document.getElementById(`editText-${id}`); if (input) input.focus(); }
+    async function saveItem(type, id) { if (!currentUserId) return; const newText = document.getElementById(`editText-${id}`).value.trim(); let updateData = { text: newText, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: currentUserId }; if (type === 'client_types') { const newPrefix = document.getElementById(`editPrefix-${id}`).value.trim().toUpperCase(); updateData.rifPrefix = newPrefix; } if (newText && (type !== 'client_types' || updateData.rifPrefix)) { await dataMap[type].collection.doc(id).update(updateData); } cancelEdit(); }
+    function cancelEdit() { currentlyEditing = { type: null, id: null }; renderTable('client_types'); renderTable('media_sources'); }
+    function openModal(modalId) { const modal = document.getElementById(modalId); modal.classList.remove('hidden'); void modal.offsetWidth; modal.classList.add('opacity-100'); const modalContent = modal.querySelector('.modal-content'); if (modalContent) { modalContent.classList.remove('scale-95'); modalContent.classList.add('scale-100'); } if (modalId === 'modalClientType') renderTable('client_types'); else if (modalId === 'modalMediaSource') renderTable('media_sources'); }
+    function closeModal(modalId) { const modal = document.getElementById(modalId); if (!modal) return; modal.classList.remove('opacity-100'); const modalContent = modal.querySelector('.modal-content'); if (modalContent) { modalContent.classList.remove('scale-100'); modalContent.classList.add('scale-95'); } setTimeout(() => { modal.classList.add('hidden'); if (modalId === 'modalClientType' || modalId === 'modalMediaSource') { cancelEdit(); } }, 300); }
+    function showAlertDialog(title, message) { document.getElementById('alertModalTitle').textContent = title; document.getElementById('alertModalMessage').textContent = message; openModal('alertModal'); }
+    function showSuccessModal(message) { document.getElementById('successModalMessage').textContent = message; openModal('successModal'); }
+    function addFiscalAddress(text = '', isMain = false) { fiscalAddressCounter++; const container = document.getElementById('fiscalAddressContainer'); const newItem = document.createElement('div'); newItem.className = 'fiscal-address-item flex items-start gap-4 mt-3'; newItem.innerHTML = `<textarea name="fiscalAddress[]" placeholder="Ingrese la dirección fiscal" class="w-full border-gray-300 rounded-lg shadow-sm" rows="3" required>${text}</textarea><div class="flex items-center h-full pt-2"><input type="radio" name="mainAddress" id="mainAddress_${fiscalAddressCounter}" class="form-radio h-5 w-5 text-blue-600" ${isMain ? 'checked' : ''}><label for="mainAddress_${fiscalAddressCounter}" class="ml-2 text-sm text-gray-600">Principal</label></div>`; container.appendChild(newItem); }
+    function addPhone(number = '', desc = '') { const container = document.getElementById('phonesContainer'); const newItem = document.createElement('div'); newItem.className = 'phone-item flex items-center gap-4 mt-3'; newItem.innerHTML = `<input type="tel" name="phone[]" placeholder="Número de Teléfono" class="w-full border-gray-300 rounded-lg shadow-sm" required value="${number}"><input type="text" name="phoneDesc[]" placeholder="Descripción (Ej: Oficina)" class="w-full border-gray-300 rounded-lg shadow-sm" value="${desc}">`; container.appendChild(newItem); }
+    function addEmail(email = '') { const container = document.getElementById('emailsContainer'); const newItem = document.createElement('div'); newItem.className = 'email-item flex items-center gap-4 mt-3'; newItem.innerHTML = `<input type="email" name="email[]" placeholder="ejemplo@correo.com" class="w-full border-gray-300 rounded-lg shadow-sm" value="${email}">`; container.appendChild(newItem); }
+    function addContactPerson(name = '', phone = '') { const container = document.getElementById('contactPeopleContainer'); const newItem = document.createElement('div'); newItem.className = 'contact-person-item flex items-center gap-4 mt-3'; newItem.innerHTML = `<input type="text" name="contactName[]" placeholder="Nombre de Contacto" class="w-full border-gray-300 rounded-lg shadow-sm" value="${name}"><input type="tel" name="contactPhone[]" placeholder="Teléfono de Contacto" class="w-full border-gray-300 rounded-lg shadow-sm" value="${phone}">`; container.appendChild(newItem); }
+    const takePhotoBtn = document.getElementById('takePhotoBtn'); const cameraModal = document.getElementById('cameraModal'); const video = document.getElementById('cameraFeed'); const canvas = document.getElementById('cameraCanvas'); const captureBtn = document.getElementById('captureBtn'); const cancelCameraBtn = document.getElementById('cancelCameraBtn'); let stream;
+    takePhotoBtn.addEventListener('click', async () => { try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }); video.srcObject = stream; cameraModal.classList.remove('hidden'); cameraModal.classList.add('flex'); } catch (err) { console.error("Error al acceder a la cámara: ", err); alert("No se pudo acceder a la cámara."); } });
+    captureBtn.addEventListener('click', () => { const imagePreview = document.getElementById('imagePreview'); const imagePreviewContainer = document.getElementById('imagePreviewContainer'); const imageUploadBox = document.getElementById('imageUploadBox'); const imageFileName = document.getElementById('imageFileName'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height); const dataUrl = canvas.toDataURL('image/png'); imagePreview.src = dataUrl; imagePreviewContainer.classList.remove('hidden'); imageUploadBox.classList.add('hidden'); imageFileName.textContent = `captura-${Date.now()}.png`; closeCamera(); });
+    cancelCameraBtn.addEventListener('click', () => closeCamera());
+    function closeCamera() { if (stream) { stream.getTracks().forEach(track => track.stop()); } cameraModal.classList.add('hidden'); cameraModal.classList.remove('flex'); }
+    document.getElementById('clientPhoto').addEventListener('change', function(event) { const file = event.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = function(e) { document.getElementById('imagePreview').src = e.target.result; document.getElementById('imagePreviewContainer').classList.remove('hidden'); document.getElementById('imageUploadBox').classList.add('hidden'); document.getElementById('imageFileName').textContent = file.name; }; reader.readAsDataURL(file); } });
+    function removeImage() { document.getElementById('imagePreview').src = "#"; document.getElementById('clientPhoto').value = ""; document.getElementById('imagePreviewContainer').classList.add('hidden'); document.getElementById('imageUploadBox').classList.remove('hidden'); document.getElementById('imageFileName').textContent = ""; }
+</script>
+</body>
+</html>
+

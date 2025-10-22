@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión Integral</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .view { display: none; }
+        .view.active { display: block; }
+        .nav-link {
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: background-color 0.3s, color 0.3s;
+            border: 2px solid transparent;
+        }
+        .nav-link:hover {
+            background-color: #e0f2f1;
+            color: #00796b;
+        }
+        .nav-link.active {
+            background-color: #00796b;
+            color: white;
+            font-weight: 600;
+        }
+        .modal-bg { background-color: rgba(0,0,0,0.6); }
+        .kpi-card { transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; }
+        .kpi-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
+        .password-container { position: relative; }
+        .password-toggle { position: absolute; top: 50%; right: 0.75rem; transform: translateY(-50%); cursor: pointer; }
+        .chart-range-btn {
+            background-color: #e5e7eb; /* bg-gray-200 */
+            color: #374151; /* text-gray-700 */
+            font-weight: 600; /* font-semibold */
+            padding: 0.25rem 0.75rem; /* py-1 px-3 */
+            border-radius: 0.375rem; /* rounded-md */
+            font-size: 0.875rem; /* text-sm */
+        }
+        .chart-range-btn.active {
+            background-color: #0d9488; /* bg-cyan-600 */
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- =========== OVERLAYS Y ELEMENTOS GLOBALES =========== -->
+    <div id="loading-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-white bg-opacity-80">
+        <div class="text-center">
+            <svg class="animate-spin h-10 w-10 text-cyan-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p id="loading-text" class="mt-2 text-gray-600 font-medium">Cargando...</p>
+        </div>
+    </div>
+
+    <!-- =========== SECCIÓN DE LOGIN =========== -->
+    <div id="login-section" class="min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-md">
+            <div class="bg-white shadow-xl rounded-2xl px-8 pt-6 pb-8">
+                <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Sistema de Gestión</h1>
+                <p class="text-center text-gray-500 mb-6">Por favor, inicie sesión para continuar</p>
+                <form id="login-form">
+                    <div class="mb-4">
+                        <label for="user-select" class="block text-gray-700 text-sm font-bold mb-2">Usuario:</label>
+                        <select id="user-select" class="shadow border rounded-lg w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                            <option>Cargando...</option>
+                        </select>
+                    </div>
+                    <div class="mb-6">
+                        <label for="password" class="block text-gray-700 text-sm font-bold mb-2">Contraseña:</label>
+                        <input id="password" type="password" placeholder="******************" class="shadow appearance-none border rounded-lg w-full py-3 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:shadow-outline transition">Acceder</button>
+                    </div>
+                    <div id="login-message" class="text-center text-red-500 text-sm mt-4 h-4"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- =========== APLICACIÓN PRINCIPAL (POST-LOGIN) =========== -->
+    <div id="app-shell" class="hidden">
+        <header class="bg-white shadow-md sticky top-0 z-40">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center space-x-4">
+                        <svg class="h-8 w-8 text-cyan-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M12 6V3m0 18v-3M5.636 5.636l-1.414-1.414M19.778 19.778l-1.414-1.414M18.364 5.636l-1.414 1.414M4.222 19.778l-1.414 1.414M12 12a6 6 0 100-12 6 6 0 000 12z"/></svg>
+                        <span class="text-xl font-bold text-gray-700">Gestor</span>
+                        <nav id="main-nav" class="hidden md:flex items-center space-x-2 pl-4 border-l ml-4"></nav>
+                    </div>
+                    <div class="flex items-center">
+                        <div id="welcome-message" class="text-right mr-4"></div>
+                        <button id="logout-button" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg text-sm transition">
+                            Cerrar Sesión
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="container mx-auto p-4 sm:p-6 lg:p-8">
+            <div id="view-dashboard" class="view"></div>
+            <div id="view-technician" class="view"></div>
+            <div id="view-clients" class="view"></div>
+            <div id="view-bonus-report" class="view"></div>
+            <div id="view-task-admin" class="view"></div>
+            <div id="view-rbac-admin" class="view"></div>
+        </main>
+    </div>
+
+    <div id="modals-container"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+            authDomain: "sistema-productividad-equipo.firebaseapp.com",
+            projectId: "sistema-productividad-equipo",
+            storageBucket: "sistema-productividad-equipo.appspot.com",
+            messagingSenderId: "196802708765",
+            appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        const employeesCol = db.collection('employees');
+        const rolesCol = db.collection('roles');
+        const permissionsCol = db.collection('permissions');
+        const rolePermissionsCol = db.collection('role_permissions');
+        const processesCol = db.collection('processes');
+        const subprocessesCol = db.collection('subprocesses');
+        const activityLogsCol = db.collection('activity_logs');
+        const partRequestsCol = db.collection('part_requests');
+        const configCol = db.collection('config');
+        const clientsCol = db.collection('clients');
+
+        let currentUser = null;
+        let userPermissions = new Set();
+        let allUsers = [], allRoles = [], allPermissions = [], rolePermissionsMap = {};
+        let viewsInitialized = false;
+        
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        const loginSection = document.getElementById('login-section');
+        const appShell = document.getElementById('app-shell');
+        const loginForm = document.getElementById('login-form');
+        const userSelect = document.getElementById('user-select');
+        const passwordInput = document.getElementById('password');
+        const loginMessage = document.getElementById('login-message');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const logoutButton = document.getElementById('logout-button');
+        const mainNav = document.getElementById('main-nav');
+        const modalsContainer = document.getElementById('modals-container');
+
+        function toggleLoading(show, text = 'Cargando...') {
+            loadingText.textContent = text;
+            loadingOverlay.classList.toggle('hidden', !show);
+            loadingOverlay.classList.toggle('flex', show);
+        }
+        
+        window.toggleModal = (modalId, show) => {
+            const modal = document.getElementById(modalId);
+            if (!modal) return;
+            modal.classList.toggle('hidden', !show);
+            modal.classList.toggle('flex', show);
+        };
+
+        const views = {
+            'dashboard': document.getElementById('view-dashboard'),
+            'technician': document.getElementById('view-technician'),
+            'clients': document.getElementById('view-clients'),
+            'bonus-report': document.getElementById('view-bonus-report'),
+            'task-admin': document.getElementById('view-task-admin'),
+            'rbac-admin': document.getElementById('view-rbac-admin'),
+        };
+
+        function showView(viewId) {
+            Object.values(views).forEach(view => view.classList.remove('active'));
+            if (views[viewId]) {
+                views[viewId].classList.add('active');
+                document.dispatchEvent(new CustomEvent('viewchanged', { detail: { viewId } }));
+            }
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.toggle('active', link.dataset.view === viewId);
+            });
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            toggleLoading(true, 'Verificando...');
+            const selectedUser = allUsers.find(u => u.id === userSelect.value);
+            
+            if (!selectedUser || !selectedUser.is_active) {
+                loginMessage.textContent = 'Usuario inválido o deshabilitado.';
+                toggleLoading(false); return;
+            }
+
+            let isAuthenticated = (selectedUser.name === 'Juan Lai' && passwordInput.value === 'admin123') || (selectedUser.passwordHash && passwordInput.value === 'user123');
+
+            if (isAuthenticated) {
+                currentUser = selectedUser;
+                loginMessage.textContent = '';
+                passwordInput.value = '';
+                await initializeMainApp();
+            } else {
+                loginMessage.textContent = 'Contraseña incorrecta.';
+                toggleLoading(false);
+            }
+        }
+        
+        function handleLogout() {
+            currentUser = null;
+            userPermissions.clear();
+            appShell.classList.add('hidden');
+            loginSection.style.display = 'flex';
+            mainNav.innerHTML = '';
+        }
+
+        async function initializeMainApp() {
+            await fetchUserPermissions();
+            if (!viewsInitialized) {
+                initAllViews();
+                viewsInitialized = true;
+            }
+            setupMainMenu();
+            loginSection.style.display = 'none';
+            appShell.classList.remove('hidden');
+            welcomeMessage.innerHTML = `<p class="text-sm font-semibold text-gray-700">${currentUser.name}</p><p class="text-xs text-gray-500">${allRoles.find(r => r.id === (currentUser.rol_ids || [])[0])?.name || 'Sin rol'}</p>`;
+            
+            const firstPermittedView = mainNav.querySelector('.nav-link')?.dataset.view;
+            if (firstPermittedView) {
+                showView(firstPermittedView);
+            } else {
+                views['dashboard'].innerHTML = `<div class="text-center p-8 bg-white rounded-lg shadow"><h2 class="text-2xl font-bold">Bienvenido, ${currentUser.name}</h2><p class="text-gray-600 mt-2">No tiene módulos asignados para visualizar.</p></div>`;
+                showView('dashboard');
+            }
+            toggleLoading(false);
+        }
+
+        async function fetchUserPermissions() {
+            userPermissions.clear();
+            if (!currentUser || !currentUser.rol_ids) return;
+            const userRoleIds = currentUser.rol_ids;
+            let permissionIds = new Set();
+            userRoleIds.forEach(roleId => { (rolePermissionsMap[roleId] || []).forEach(permId => permissionIds.add(permId)); });
+            allPermissions.forEach(perm => { if (permissionIds.has(perm.id)) { userPermissions.add(perm.key); } });
+        }
+        
+        function setupMainMenu() {
+            mainNav.innerHTML = '';
+            const menuItems = [
+                { id: 'dashboard', label: 'Dashboard', icon: 'M9 17v-2a4 4 0 00-4-4H3V9h2a4 4 0 004-4V3l5 4-5 4v-2a2 2 0 00-2 2v2h2l-2 2z', permissions: ['view_dashboard'] },
+                { id: 'technician', label: 'Panel Técnico', icon: 'M10 20l4-16m4 4l-4 4-4-4 4-4', permissions: ['view_technician_panel'] },
+                { id: 'clients', label: 'Clientes', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21v-2a4 4 0 00-4-4H9.88a4 4 0 00-3.956 3.197', permissions: ['manage_clients'] },
+                { id: 'bonus-report', label: 'Bonos', icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z', permissions: ['view_bonus_report'] },
+                { id: 'task-admin', label: 'Config. Tareas', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z', permissions: ['manage_processes'] },
+                { id: 'rbac-admin', label: 'Admin. Sistema', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', permissions: ['manage_users', 'manage_roles_permissions'] },
+            ];
+            menuItems.forEach(item => {
+                const canView = item.permissions.some(p => userPermissions.has(p));
+                if (canView) {
+                    const link = document.createElement('a');
+                    link.className = 'nav-link flex items-center space-x-2 text-gray-600 font-medium';
+                    link.dataset.view = item.id;
+                    link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="${item.icon}" /></svg><span>${item.label}</span>`;
+                    link.onclick = () => showView(item.id);
+                    mainNav.appendChild(link);
+                }
+            });
+        }
+        
+        function initAllViews() {
+            initDashboardView();
+            initTechnicianView();
+            initClientsView();
+            initBonusReportView();
+            initTaskAdminView();
+            initRbacAdminView();
+        }
+
+        function initDashboardView() {
+            const view = views['dashboard'];
+            view.innerHTML = `
+                <div class="mb-8">
+                    <h1 class="text-3xl font-bold text-gray-800">Dashboard de Reportes y Análisis</h1>
+                    <p class="text-gray-500">Visualiza la productividad y el rendimiento de tu equipo.</p>
+                </div>
+                <div id="kpi-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"></div>
+                <div class="mb-8">
+                    <h2 class="text-2xl font-semibold text-gray-700 mb-4">Actividad en Tiempo Real</h2>
+                    <div id="real-time-activity-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+                </div>
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
+                    <div class="bg-white p-6 rounded-xl shadow-lg"><h2 class="text-2xl font-semibold text-gray-700 mb-4">Procesos en Pausa</h2><div id="paused-tasks-container" class="space-y-3 max-h-96 overflow-y-auto"></div></div>
+                    <div class="bg-white p-6 rounded-xl shadow-lg">
+                        <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+                            <h2 class="text-2xl font-semibold text-gray-700">Solicitudes de Repuestos</h2>
+                            <select id="part-request-filter" class="border-gray-300 rounded-md shadow-sm bg-white p-2">
+                                <option value="all">Todos</option><option value="Solicitado">Solicitado</option><option value="Procesando">Procesando</option><option value="Pagado">Pagado</option><option value="Recibido">Recibido</option><option value="Entregado">Entregado</option>
+                            </select>
+                        </div>
+                        <div id="part-requests-container" class="space-y-3 max-h-96 overflow-y-auto"></div>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+                    <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                        <h2 class="text-2xl font-semibold text-gray-700">Análisis de Productividad</h2>
+                        <div class="flex items-center gap-2" id="chart-filter-buttons">
+                            <button data-range="day" class="chart-range-btn">Día</button><button data-range="week" class="chart-range-btn active">Semana</button><button data-range="month" class="chart-range-btn">Mes</button><button data-range="year" class="chart-range-btn">Año</button>
+                        </div>
+                    </div>
+                    <div><canvas id="employee-chart"></canvas></div>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-semibold text-gray-700 mb-4">Registro Histórico de Actividades</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Fecha</th><th scope="col" class="px-6 py-3">Empleado</th><th scope="col" class="px-6 py-3">Proceso</th>
+                                    <th scope="col" class="px-6 py-3">Duración</th><th scope="col" class="px-6 py-3"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="activity-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>`;
+            
+            modalsContainer.insertAdjacentHTML('beforeend', `
+                <div id="details-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-bg">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+                        <div class="p-6 border-b"><h2 class="text-2xl font-bold text-gray-800">Detalles de la Actividad</h2></div>
+                        <div id="modal-content" class="p-6 overflow-y-auto"></div>
+                        <div class="p-4 bg-gray-50 border-t flex justify-end"><button onclick="toggleModal('details-modal', false)" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Cerrar</button></div>
+                    </div>
+                </div>
+                <div id="reassign-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-bg">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4">Reasignar Proceso</h2>
+                        <p class="mb-4 text-gray-600">Selecciona un nuevo técnico o mueve el proceso a la piscina de tareas disponibles.</p>
+                        <select id="employee-reassign-select" class="w-full p-3 border rounded-lg bg-gray-50 mb-4"></select>
+                        <div class="flex justify-end gap-4 mt-6">
+                            <button onclick="toggleModal('reassign-modal', false)" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                            <button id="reassign-confirm-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg">Confirmar</button>
+                        </div>
+                    </div>
+                </div>`);
+
+            const kpiContainer = view.querySelector('#kpi-container');
+            const activityTableBody = view.querySelector('#activity-table-body');
+            const realTimeContainer = view.querySelector('#real-time-activity-container');
+            const chartCanvas = view.querySelector('#employee-chart');
+            const chartFilterButtons = view.querySelector('#chart-filter-buttons');
+            const pausedTasksContainer = view.querySelector('#paused-tasks-container');
+            const partRequestsContainer = view.querySelector('#part-requests-container');
+            const partRequestFilter = view.querySelector('#part-request-filter');
+            const employeeReassignSelect = document.getElementById('employee-reassign-select');
+            
+            let employeesMap = {};
+            let processesMap = {};
+            let subprocessesMap = {};
+            let employeeChart = null;
+            let activeTimersInterval = null;
+            let currentReassigningLogId = null;
+            let completedLogsCache = [];
+            let isDashboardInitialized = false;
+
+            const init = async () => {
+                isDashboardInitialized = true;
+                toggleLoading(true, 'Cargando datos del dashboard...');
+                try {
+                    const [employeesSnap, processesSnap, subprocessesSnap] = await Promise.all([
+                        employeesCol.get(), processesCol.get(), subprocessesCol.get()
+                    ]);
+                    employeesSnap.docs.forEach(doc => employeesMap[doc.id] = doc.data());
+                    processesSnap.docs.forEach(doc => processesMap[doc.id] = doc.data());
+                    subprocessesSnap.docs.forEach(doc => subprocessesMap[doc.id] = doc.data());
+
+                    populateReassignDropdown();
+                    listenForActiveTasks();
+                    listenForPausedTasks();
+                    listenForPartRequests();
+                    
+                    chartFilterButtons.querySelector('[data-range="week"]').click();
+                } catch (error) {
+                    console.error("Dashboard Init failed:", error);
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+            
+            document.addEventListener('viewchanged', ({ detail }) => {
+                if (detail.viewId === 'dashboard' && !isDashboardInitialized) {
+                    init();
+                }
+            });
+
+            const fetchAndRenderDataForRange = async (startDate, endDate) => {
+                try {
+                    const querySnapshot = await activityLogsCol.where('status', '==', 'completed').where('end_time', '>=', startDate).where('end_time', '<=', endDate).get();
+                    completedLogsCache = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    completedLogsCache.sort((a, b) => b.end_time.toMillis() - a.end_time.toMillis());
+                    renderKPIs(completedLogsCache);
+                    renderActivityTable(completedLogsCache);
+                    renderEmployeeChart(completedLogsCache);
+                } catch (error) { console.error("Error fetching logs:", error); }
+            };
+
+            const renderKPIs = (logs) => { /* ... (Logic from original file) ... */ };
+            const renderActivityTable = (logs) => { /* ... (Logic from original file) ... */ };
+            window.showDetailsModal = async (logId) => { /* ... (Logic from original file) ... */ };
+            const listenForActiveTasks = () => { /* ... (Logic from original file) ... */ };
+            const updateActiveTimers = () => { /* ... (Logic from original file) ... */ };
+            const renderEmployeeChart = (logs) => { /* ... (Logic from original file) ... */ };
+            const listenForPausedTasks = () => { /* ... (Logic from original file) ... */ };
+            const listenForPartRequests = () => { /* ... (Logic from original file) ... */ };
+            const populateReassignDropdown = () => { /* ... (Logic from original file) ... */ };
+            window.openReassignModal = (logId) => { /* ... (Logic from original file) ... */ };
+            window.updateRequestStatus = async (selectElement, reqId) => { /* ... (Logic from original file) ... */ };
+
+            chartFilterButtons.addEventListener('click', (e) => {
+                if (!e.target.matches('.chart-range-btn')) return;
+                chartFilterButtons.querySelectorAll('.chart-range-btn').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+                const range = e.target.dataset.range;
+                const today = new Date();
+                let start = new Date(today);
+                if (range === 'day') start.setHours(0,0,0,0);
+                else if (range === 'week') { start.setDate(start.getDate() - start.getDay() + (start.getDay() === 0 ? -6 : 1)); start.setHours(0,0,0,0); }
+                else if (range === 'month') { start.setDate(1); start.setHours(0,0,0,0); }
+                else if (range === 'year') start = new Date(today.getFullYear(), 0, 1);
+                fetchAndRenderDataForRange(start, new Date());
+            });
+
+            partRequestFilter.addEventListener('change', listenForPartRequests);
+            document.getElementById('reassign-confirm-btn').onclick = async () => { /* ... (Logic from original file) ... */ };
+        }
+        function initTechnicianView() { /* ... Lógica del Panel de Técnico ... */ }
+        function initClientsView() { /* ... Lógica de Admin de Clientes ... */ }
+        function initBonusReportView() { /* ... Lógica del reporte de bonos ... */ }
+        function initTaskAdminView() { /* ... Lógica del admin de tareas ... */ }
+        
+        function initRbacAdminView() {
+            // ... (código sin cambios) ...
+        }
+
+        async function ensureBaseData() {
+             const batch = db.batch();
+            
+            const predefinedPermissions = [
+                { key: 'view_dashboard', description: 'Ver dashboard gerencial', module: 'Dashboard' },
+                { key: 'view_technician_panel', description: 'Acceder al panel de técnico', module: 'Técnico' },
+                { key: 'manage_clients', description: 'Gestionar clientes (CRUD)', module: 'Clientes' },
+                { key: 'view_bonus_report', description: 'Ver reporte de bonos', module: 'Bonos' },
+                { key: 'manage_bonus_config', description: 'Configurar bonos', module: 'Bonos' },
+                { key: 'manage_processes', description: 'Gestionar procesos y subprocesos', module: 'Configuración' },
+                { key: 'manage_users', description: 'Gestionar usuarios', module: 'Sistema' },
+                { key: 'manage_roles_permissions', description: 'Gestionar roles y permisos', module: 'Sistema' },
+            ];
+
+            const permPromises = predefinedPermissions.map(async (perm) => {
+                const q = await permissionsCol.where('key', '==', perm.key).limit(1).get();
+                if (q.empty) {
+                    const docRef = permissionsCol.doc();
+                    batch.set(docRef, perm);
+                    return { ...perm, id: docRef.id };
+                }
+                return { ...q.docs[0].data(), id: q.docs[0].id };
+            });
+            const createdPermissions = await Promise.all(permPromises);
+            const permissionsMap = createdPermissions.reduce((acc, perm) => ({...acc, [perm.key]: perm.id }), {});
+
+            const predefinedRoles = {
+                'Administrador': Object.keys(permissionsMap),
+                'Supervisor': ['view_dashboard', 'manage_clients'],
+                'Técnico': ['view_technician_panel']
+            };
+
+            const rolePromises = Object.keys(predefinedRoles).map(async (roleName) => {
+                const q = await rolesCol.where('name', '==', roleName).limit(1).get();
+                if (q.empty) {
+                    const docRef = rolesCol.doc();
+                    batch.set(docRef, { name: roleName });
+                    return { name: roleName, id: docRef.id };
+                }
+                return { name: q.docs[0].data().name, id: q.docs[0].id };
+            });
+            const createdRoles = await Promise.all(rolePromises);
+            const rolesMap = createdRoles.reduce((acc, role) => ({...acc, [role.name]: role.id }), {});
+
+            for (const roleName in predefinedRoles) {
+                const roleId = rolesMap[roleName];
+                const permissionKeys = predefinedRoles[roleName];
+                for (const permKey of permissionKeys) {
+                    const permissionId = permissionsMap[permKey];
+                    if (roleId && permissionId) {
+                        const q = await rolePermissionsCol.where('rol_id', '==', roleId).where('permission_id', '==', permissionId).limit(1).get();
+                        if (q.empty) {
+                            batch.set(rolePermissionsCol.doc(), { rol_id: roleId, permission_id: permissionId });
+                        }
+                    }
+                }
+            }
+             await batch.commit();
+        }
+
+
+        async function loadMasterDataAndStart() {
+            toggleLoading(true, 'Configurando sistema...');
+            await ensureBaseData();
+            toggleLoading(true, 'Cargando datos maestros...');
+            try {
+                const [usersSnap, rolesSnap, permsSnap, rolePermsSnap] = await Promise.all([
+                    employeesCol.orderBy('order').get(),
+                    rolesCol.orderBy('name').get(),
+                    permissionsCol.orderBy('module').orderBy('key').get(),
+                    rolePermissionsCol.get()
+                ]);
+                allUsers = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                allRoles = rolesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                allPermissions = permsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                rolePermissionsMap = {};
+                rolePermsSnap.forEach(doc => {
+                    const { rol_id, permission_id } = doc.data();
+                    if (!rolePermissionsMap[rol_id]) rolePermissionsMap[rol_id] = [];
+                    rolePermissionsMap[rol_id].push(permission_id);
+                });
+
+                userSelect.innerHTML = '';
+                allUsers.filter(u => u.is_active).forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = user.name;
+                    userSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error("Error fatal cargando datos maestros:", error);
+            } finally {
+                toggleLoading(false);
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            loginForm.addEventListener('submit', handleLogin);
+            logoutButton.addEventListener('click', handleLogout);
+            loadMasterDataAndStart();
+        });
+
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración de Empleados</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-cyan-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-2 text-gray-600">Cargando Empleados...</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Administración de Empleados</h1>
+            <p class="text-gray-500">Gestiona el personal que tiene acceso al sistema de productividad.</p>
+        </div>
+        
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-semibold text-gray-700">Lista de Personal</h2>
+                <button id="show-employee-form-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition">+ Agregar Empleado</button>
+            </div>
+            
+            <form id="employee-form" class="mb-6 hidden bg-gray-50 p-4 rounded-lg border"></form>
+            
+            <div id="employees-list" class="space-y-3 min-h-[100px]">
+                <!-- La lista de empleados se cargará aquí -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+            authDomain: "sistema-productividad-equipo.firebaseapp.com",
+            projectId: "sistema-productividad-equipo",
+            storageBucket: "sistema-productividad-equipo.appspot.com",
+            messagingSenderId: "196802708765",
+            appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+            measurementId: "G-THNZ3J3HZF"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const employeesCollection = db.collection('employees');
+    </script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const employeesList = document.getElementById('employees-list');
+        const showEmployeeFormBtn = document.getElementById('show-employee-form-btn');
+        const employeeForm = document.getElementById('employee-form');
+
+        const renderEmployeeForm = (employee = {}) => {
+            const isEditing = !!employee.id;
+            employeeForm.innerHTML = `
+                <input type="hidden" id="employee-id" value="${employee.id || ''}">
+                <h3 class="font-semibold mb-3">${isEditing ? 'Editar' : 'Nuevo'} Empleado</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                    <div class="md:col-span-2">
+                        <label for="employee-name" class="block text-sm font-medium text-gray-700">Nombre Completo</label>
+                        <input type="text" id="employee-name" value="${employee.name || ''}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500" required>
+                    </div>
+                    <div class="flex items-center mt-6">
+                        <input type="checkbox" id="employee-is-active" class="h-5 w-5 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" ${employee.is_active || !isEditing ? 'checked' : ''}>
+                        <label for="employee-is-active" class="ml-2 block text-sm text-gray-900">Activo en el sistema</label>
+                    </div>
+                </div>
+                <div class="mt-6 flex gap-3">
+                    <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg">${isEditing ? 'Guardar Cambios' : 'Crear Empleado'}</button>
+                    <button type="button" id="cancel-employee-form" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                </div>
+            `;
+            employeeForm.querySelector('#cancel-employee-form').addEventListener('click', () => {
+                employeeForm.classList.add('hidden');
+                showEmployeeFormBtn.classList.remove('hidden');
+            });
+            employeeForm.classList.remove('hidden');
+            showEmployeeFormBtn.classList.add('hidden');
+        };
+        
+        const renderEmployees = (employees) => {
+            employeesList.innerHTML = '';
+            if (employees.length === 0) {
+                employeesList.innerHTML = `<p class="text-gray-500 text-center p-4">No hay empleados registrados.</p>`;
+                return;
+            }
+            employees.sort((a, b) => a.name.localeCompare(b.name)).forEach(emp => {
+                const el = document.createElement('div');
+                el.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
+                el.innerHTML = `
+                    <div>
+                        <p class="font-semibold text-gray-800">${emp.name}</p>
+                        <span class="text-xs font-medium px-2 py-0.5 rounded ${emp.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${emp.is_active ? 'Activo' : 'Inactivo'}</span>
+                    </div>
+                    <div class="flex gap-2 flex-shrink-0">
+                        <button data-id="${emp.id}" class="edit-employee-btn text-sm bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md">Editar</button>
+                        <button data-id="${emp.id}" data-active="${emp.is_active}" class="toggle-active-btn text-sm ${emp.is_active ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white font-semibold py-1 px-3 rounded-md">${emp.is_active ? 'Desactivar' : 'Activar'}</button>
+                    </div>`;
+                employeesList.appendChild(el);
+            });
+        };
+
+        // --- LISTENERS ---
+        employeesCollection.onSnapshot(snapshot => {
+            const employees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderEmployees(employees);
+            loadingOverlay.style.display = 'none';
+        }, err => {
+            console.error("Error fetching employees: ", err);
+            loadingOverlay.style.display = 'none';
+            alert("No se pudo conectar a la base de datos de empleados.");
+        });
+        
+        showEmployeeFormBtn.addEventListener('click', () => renderEmployeeForm());
+        
+        employeeForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = e.target.elements['employee-id'].value;
+            const name = e.target.elements['employee-name'].value.trim();
+            const is_active = e.target.elements['employee-is-active'].checked;
+
+            if (!name) { alert('El nombre es obligatorio.'); return; }
+            
+            const data = { name, is_active };
+            
+            try {
+                if (id) {
+                    await employeesCollection.doc(id).update(data);
+                } else {
+                    await employeesCollection.add(data);
+                }
+                employeeForm.classList.add('hidden');
+                showEmployeeFormBtn.classList.remove('hidden');
+            } catch (err) {
+                console.error("Error saving employee: ", err);
+                alert('Error al guardar el empleado.');
+            }
+        });
+        
+        employeesList.addEventListener('click', async (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+            const id = target.dataset.id;
+            
+            if (target.classList.contains('edit-employee-btn')) {
+                const doc = await employeesCollection.doc(id).get();
+                renderEmployeeForm({ id: doc.id, ...doc.data() });
+            } else if (target.classList.contains('toggle-active-btn')) {
+                const currentStatus = target.dataset.active === 'true';
+                try {
+                    await employeesCollection.doc(id).update({ is_active: !currentStatus });
+                } catch (err) {
+                    console.error("Error updating status: ", err);
+                    alert('No se pudo actualizar el estado.');
+                }
+            }
+        });
+    });
+    </script>
+</body>
+</html>

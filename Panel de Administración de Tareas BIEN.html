@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración de Tareas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.75); }
+        .time-input-container { transition: all 0.3s ease-in-out; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-cyan-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-2 text-gray-600">Conectando a la Base de Datos...</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Panel de Administración de Tareas</h1>
+            <p class="text-gray-500">Configuración de procesos, subprocesos y campos de datos personalizados del sistema.</p>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Columna de Procesos Principales -->
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-4">Procesos Principales</h2>
+                <div id="main-tasks-list" class="space-y-3 mb-6 min-h-[100px]"></div>
+                <button id="show-task-form-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition">+ Crear Nuevo Proceso</button>
+                <form id="task-form" class="mt-6 hidden bg-gray-50 p-4 rounded-lg border"></form>
+            </div>
+            <!-- Columna de Subprocesos -->
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-4">Subprocesos</h2>
+                <div id="subtasks-list" class="space-y-3 mb-6 min-h-[100px]"></div>
+                <button id="show-subtask-form-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition">+ Crear Nuevo Subproceso</button>
+                <form id="subtask-form" class="mt-6 hidden bg-gray-50 p-4 rounded-lg border"></form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Gestionar Checklist -->
+    <div id="checklist-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Gestionar Checklist para "<span id="modal-task-name"></span>"</h2>
+            <p class="text-gray-600 mb-6">Selecciona los subprocesos que deben estar disponibles.</p>
+            <div id="modal-subtasks-list" class="space-y-3 max-h-80 overflow-y-auto border p-4 rounded-md"></div>
+            <div class="mt-6 flex justify-end gap-4">
+                <button id="modal-cancel-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Cerrar</button>
+                <button id="modal-save-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal para Gestionar Campos Personalizados -->
+    <div id="custom-fields-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Campos Personalizados para "<span id="custom-fields-task-name"></span>"</h2>
+            <p class="text-gray-600 mb-6">Define los campos de información que el técnico debe rellenar para este (sub)proceso.</p>
+            
+            <div id="custom-fields-list" class="space-y-3 max-h-60 overflow-y-auto border p-4 rounded-md mb-6"></div>
+
+            <form id="add-custom-field-form" class="bg-gray-50 p-4 rounded-lg border">
+                <h3 class="font-semibold mb-3">Agregar Nuevo Campo</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="md:col-span-2">
+                        <label for="field-label" class="block text-sm font-medium text-gray-700">Nombre del Campo (Etiqueta)</label>
+                        <input type="text" id="field-label" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Ej: Serial del Equipo" required>
+                    </div>
+                    <div>
+                         <label for="field-type" class="block text-sm font-medium text-gray-700">Tipo de Campo</label>
+                        <select id="field-type" class="mt-1 block w-full px-3 py-2 border bg-white border-gray-300 rounded-md">
+                            <option value="text">Texto</option>
+                            <option value="number">Número</option>
+                            <option value="boolean">Sí / No</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex items-center mt-4">
+                    <input type="checkbox" id="field-required" class="h-4 w-4 text-cyan-600 border-gray-300 rounded">
+                    <label for="field-required" class="ml-2 block text-sm text-gray-900">¿Es un campo obligatorio?</label>
+                </div>
+                 <button type="submit" class="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Agregar Campo</button>
+            </form>
+
+            <div class="mt-6 flex justify-end">
+                <button id="custom-fields-close-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+            authDomain: "sistema-productividad-equipo.firebaseapp.com",
+            projectId: "sistema-productividad-equipo",
+            storageBucket: "sistema-productividad-equipo.appspot.com",
+            messagingSenderId: "196802708765",
+            appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+            measurementId: "G-THNZ3J3HZF"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const processesCollection = db.collection('processes');
+        const subprocessesCollection = db.collection('subprocesses');
+    </script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const mainTasksList = document.getElementById('main-tasks-list');
+        const subtasksList = document.getElementById('subtasks-list');
+        const showTaskFormBtn = document.getElementById('show-task-form-btn');
+        const showSubtaskFormBtn = document.getElementById('show-subtask-form-btn');
+        const taskForm = document.getElementById('task-form');
+        const subtaskForm = document.getElementById('subtask-form');
+        const checklistModal = document.getElementById('checklist-modal');
+        const customFieldsModal = document.getElementById('custom-fields-modal');
+        const modalTaskName = document.getElementById('modal-task-name');
+        const modalSubtasksList = document.getElementById('modal-subtasks-list');
+        const modalCancelBtn = document.getElementById('modal-cancel-btn');
+        const modalSaveBtn = document.getElementById('modal-save-btn');
+        const customFieldsTaskName = document.getElementById('custom-fields-task-name');
+        const customFieldsList = document.getElementById('custom-fields-list');
+        const addCustomFieldForm = document.getElementById('add-custom-field-form');
+        const customFieldsCloseBtn = document.getElementById('custom-fields-close-btn');
+
+        let allSubprocesses = [];
+        let currentEditingItemId = null;
+        let currentEditingItemType = null;
+
+        const getMeasurementBadge = (type) => {
+            const badges = { 'Unitario': 'bg-blue-100 text-blue-800', 'Cantidad': 'bg-green-100 text-green-800', 'Tiempo': 'bg-yellow-100 text-yellow-800' };
+            return badges[type] || 'bg-gray-100 text-gray-800';
+        };
+
+        const renderProcesses = (processes) => {
+            mainTasksList.innerHTML = '';
+            if (processes.length === 0) {
+                mainTasksList.innerHTML = `<p class="text-gray-500 text-center">No hay procesos creados.</p>`;
+                return;
+            }
+            processes.sort((a, b) => a.name.localeCompare(b.name)).forEach(proc => {
+                const el = document.createElement('div');
+                el.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
+                el.innerHTML = `
+                    <div>
+                        <p class="font-semibold text-gray-800">${proc.name}</p>
+                        <div class="flex items-center gap-2 mt-1 flex-wrap">
+                            ${proc.is_composite ? `<span class="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-800">Compuesto</span>` : ''}
+                            <span class="text-xs font-medium px-2 py-0.5 rounded ${getMeasurementBadge(proc.measurement_type)}">${proc.measurement_type}</span>
+                            ${proc.measurement_type === 'Cantidad' && proc.standard_time_per_unit_seconds > 0 ? `<span class="text-xs font-medium px-2 py-0.5 rounded bg-gray-200 text-gray-800">${proc.standard_time_per_unit_seconds}s/u</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex gap-2 flex-shrink-0 flex-wrap">
+                        <button data-id="${proc.id}" data-name="${proc.name}" class="manage-fields-btn text-sm bg-gray-700 hover:bg-gray-800 text-white font-semibold py-1 px-3 rounded-md">Campos</button>
+                        ${proc.is_composite ? `<button data-id="${proc.id}" data-name="${proc.name}" class="manage-checklist-btn text-sm bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-1 px-3 rounded-md">Checklist</button>` : ''}
+                        <button data-id="${proc.id}" class="edit-process-btn text-sm bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md">Editar</button>
+                        <button data-id="${proc.id}" class="delete-process-btn text-sm bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-3 rounded-md">Borrar</button>
+                    </div>`;
+                mainTasksList.appendChild(el);
+            });
+        };
+        
+        const renderSubprocesses = (subprocesses) => {
+            subtasksList.innerHTML = '';
+            allSubprocesses = subprocesses;
+             if (subprocesses.length === 0) {
+                subtasksList.innerHTML = `<p class="text-gray-500 text-center">No hay subprocesos creados.</p>`;
+                return;
+            }
+            subprocesses.sort((a, b) => a.name.localeCompare(b.name)).forEach(sub => {
+                const el = document.createElement('div');
+                el.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
+                el.innerHTML = `
+                     <div>
+                        <p class="font-semibold text-gray-800">${sub.name}</p>
+                        <div class="flex items-center gap-2 mt-1 flex-wrap">
+                            <span class="text-xs font-medium px-2 py-0.5 rounded ${getMeasurementBadge(sub.measurement_type)}">${sub.measurement_type}</span>
+                            ${sub.measurement_type === 'Cantidad' && sub.standard_time_per_unit_seconds > 0 ? `<span class="text-xs font-medium px-2 py-0.5 rounded bg-gray-200 text-gray-800">${sub.standard_time_per_unit_seconds}s/u</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex gap-2 flex-shrink-0 flex-wrap">
+                        <button data-id="${sub.id}" data-name="${sub.name}" class="manage-fields-btn text-sm bg-gray-700 hover:bg-gray-800 text-white font-semibold py-1 px-3 rounded-md">Campos</button>
+                        <button data-id="${sub.id}" class="edit-subprocess-btn text-sm bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md">Editar</button>
+                        <button data-id="${sub.id}" class="delete-subprocess-btn text-sm bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-3 rounded-md">Borrar</button>
+                    </div>`;
+                subtasksList.appendChild(el);
+            });
+        };
+        
+        const renderTaskForm = (process = {}) => {
+            const isEditing = !!process.id;
+            taskForm.innerHTML = `
+                <input type="hidden" id="task-id" value="${process.id || ''}">
+                <h3 class="font-semibold mb-3">${isEditing ? 'Editar' : 'Nuevo'} Proceso</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label for="task-name" class="block text-sm font-medium text-gray-700">Nombre del Proceso</label>
+                        <input type="text" id="task-name" value="${process.name || ''}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500" required>
+                    </div>
+                    <div>
+                        <label for="task-measurement" class="block text-sm font-medium text-gray-700">Método de Medición</label>
+                        <select id="task-measurement" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
+                            <option value="Unitario" ${process.measurement_type === 'Unitario' ? 'selected' : ''}>Unitario</option>
+                            <option value="Cantidad" ${process.measurement_type === 'Cantidad' ? 'selected' : ''}>Cantidad</option>
+                            <option value="Tiempo" ${process.measurement_type === 'Tiempo' ? 'selected' : ''}>Tiempo</option>
+                        </select>
+                    </div>
+                    <div id="task-time-input-container" class="time-input-container ${process.measurement_type === 'Cantidad' ? 'block' : 'hidden'}">
+                        <label for="task-standard-time" class="block text-sm font-medium text-gray-700">Tiempo Estándar por Unidad (segundos)</label>
+                        <input type="number" id="task-standard-time" value="${process.standard_time_per_unit_seconds || 0}" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="task-is-composite" class="h-4 w-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" ${process.is_composite ? 'checked' : ''}>
+                        <label for="task-is-composite" class="ml-2 block text-sm text-gray-900">¿Es un proceso compuesto? (Usa checklist)</label>
+                    </div>
+                </div>
+                <div class="mt-6 flex gap-3">
+                    <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg">${isEditing ? 'Guardar Cambios' : 'Crear Proceso'}</button>
+                    <button type="button" id="cancel-task-form" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                </div>
+            `;
+            taskForm.querySelector('#task-measurement').addEventListener('change', (e) => {
+                taskForm.querySelector('#task-time-input-container').classList.toggle('hidden', e.target.value !== 'Cantidad');
+            });
+            taskForm.querySelector('#cancel-task-form').addEventListener('click', () => {
+                taskForm.classList.add('hidden');
+                showTaskFormBtn.classList.remove('hidden');
+            });
+            taskForm.classList.remove('hidden');
+            showTaskFormBtn.classList.add('hidden');
+        };
+
+        const renderSubtaskForm = (subprocess = {}) => {
+            const isEditing = !!subprocess.id;
+            subtaskForm.innerHTML = `
+                <input type="hidden" id="subtask-id" value="${subprocess.id || ''}">
+                <h3 class="font-semibold mb-3">${isEditing ? 'Editar' : 'Nuevo'} Subproceso</h3>
+                <div class="space-y-4">
+                     <div>
+                        <label for="subtask-name" class="block text-sm font-medium text-gray-700">Nombre del Subproceso</label>
+                        <input type="text" id="subtask-name" value="${subprocess.name || ''}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    <div>
+                        <label for="subtask-measurement" class="block text-sm font-medium text-gray-700">Método de Medición</label>
+                        <select id="subtask-measurement" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="Unitario" ${subprocess.measurement_type === 'Unitario' ? 'selected' : ''}>Unitario</option>
+                            <option value="Cantidad" ${subprocess.measurement_type === 'Cantidad' ? 'selected' : ''}>Cantidad</option>
+                            <option value="Tiempo" ${subprocess.measurement_type === 'Tiempo' ? 'selected' : ''}>Tiempo</option>
+                        </select>
+                    </div>
+                    <div id="subtask-time-input-container" class="time-input-container ${subprocess.measurement_type === 'Cantidad' ? 'block' : 'hidden'}">
+                        <label for="subtask-standard-time" class="block text-sm font-medium text-gray-700">Tiempo Estándar por Unidad (segundos)</label>
+                        <input type="number" id="subtask-standard-time" value="${subprocess.standard_time_per_unit_seconds || 0}" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+                <div class="mt-6 flex gap-3">
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">${isEditing ? 'Guardar Cambios' : 'Crear Subproceso'}</button>
+                    <button type="button" id="cancel-subtask-form" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                </div>
+            `;
+            subtaskForm.querySelector('#subtask-measurement').addEventListener('change', (e) => {
+                subtaskForm.querySelector('#subtask-time-input-container').classList.toggle('hidden', e.target.value !== 'Cantidad');
+            });
+            subtaskForm.querySelector('#cancel-subtask-form').addEventListener('click', () => {
+                subtaskForm.classList.add('hidden');
+                showSubtaskFormBtn.classList.remove('hidden');
+            });
+            subtaskForm.classList.remove('hidden');
+            showSubtaskFormBtn.classList.add('hidden');
+        };
+        
+        const handleFormSubmit = async (e, collection, isProcess) => {
+            e.preventDefault();
+            const formElements = e.target.elements;
+            const id = isProcess ? formElements['task-id'].value : formElements['subtask-id'].value;
+            const name = (isProcess ? formElements['task-name'].value : formElements['subtask-name'].value).trim();
+            const measurement_type = isProcess ? formElements['task-measurement'].value : formElements['subtask-measurement'].value;
+            const standard_time_per_unit_seconds = measurement_type === 'Cantidad' ? parseInt((isProcess ? formElements['task-standard-time'].value : formElements['subtask-standard-time'].value)) || 0 : 0;
+            const is_composite = isProcess ? formElements['task-is-composite'].checked : false;
+
+            if (!name) { alert('El nombre es obligatorio.'); return; }
+
+            const data = { name, measurement_type, standard_time_per_unit_seconds };
+            if (isProcess) data.is_composite = is_composite;
+            
+            try {
+                if (id) {
+                    await collection.doc(id).update(data);
+                } else {
+                    if (isProcess && is_composite) data.checklist = [];
+                    data.custom_fields = [];
+                    await collection.add(data);
+                }
+                e.target.classList.add('hidden');
+                (isProcess ? showTaskFormBtn : showSubtaskFormBtn).classList.remove('hidden');
+            } catch (err) {
+                console.error("Error saving to database: ", err);
+                alert('Error al guardar los datos.');
+            }
+        };
+
+        const openChecklistModal = (processId, processName, selectedSubprocessIds) => {
+            currentEditingItemId = processId;
+            modalTaskName.textContent = processName;
+            modalSubtasksList.innerHTML = '';
+            allSubprocesses.sort((a,b) => a.name.localeCompare(b.name)).forEach(sub => {
+                const isChecked = selectedSubprocessIds.includes(sub.id);
+                modalSubtasksList.innerHTML += `
+                    <label for="modal-sub-${sub.id}" class="flex items-center p-2 hover:bg-gray-100 rounded-md">
+                        <input type="checkbox" id="modal-sub-${sub.id}" value="${sub.id}" class="h-4 w-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" ${isChecked ? 'checked' : ''}>
+                        <span class="ml-3 text-gray-700">${sub.name}</span>
+                    </label>
+                `;
+            });
+            checklistModal.classList.remove('hidden');
+            checklistModal.classList.add('flex');
+        };
+
+        const renderCustomFieldsList = (fields = []) => {
+            customFieldsList.innerHTML = '';
+            if (fields.length === 0) {
+                customFieldsList.innerHTML = `<p class="text-gray-500 text-center">No hay campos personalizados.</p>`;
+                return;
+            }
+            fields.forEach((field, index) => {
+                const el = document.createElement('div');
+                el.className = 'flex items-center justify-between bg-white p-2 rounded border';
+                el.innerHTML = `
+                    <div>
+                        <p class="font-medium text-gray-700">${field.label}</p>
+                        <span class="text-xs text-gray-500">${field.type} ${field.required ? '(Requerido)' : ''}</span>
+                    </div>
+                    <button data-index="${index}" class="delete-field-btn text-red-500 hover:text-red-700 font-bold p-1">X</button>
+                `;
+                customFieldsList.appendChild(el);
+            });
+        };
+
+        const openCustomFieldsModal = async (itemId, itemName, itemType) => {
+            currentEditingItemId = itemId;
+            currentEditingItemType = itemType;
+            customFieldsTaskName.textContent = itemName;
+
+            const collection = itemType === 'process' ? processesCollection : subprocessesCollection;
+            const doc = await collection.doc(itemId).get();
+            const data = doc.data();
+            renderCustomFieldsList(data.custom_fields || []);
+
+            customFieldsModal.classList.remove('hidden');
+            customFieldsModal.classList.add('flex');
+        };
+
+        // --- LISTENERS ---
+        processesCollection.onSnapshot(snapshot => {
+            const processes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderProcesses(processes);
+            loadingOverlay.style.display = 'none';
+        }, err => {
+            console.error("Error fetching processes: ", err);
+            loadingOverlay.style.display = 'none';
+            alert("No se pudo conectar a la base de datos de procesos.");
+        });
+
+        subprocessesCollection.onSnapshot(snapshot => {
+            const subprocesses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderSubprocesses(subprocesses);
+        }, err => console.error("Error fetching subprocesses: ", err));
+
+        taskForm.addEventListener('submit', (e) => handleFormSubmit(e, processesCollection, true));
+        subtaskForm.addEventListener('submit', (e) => handleFormSubmit(e, subprocessesCollection, false));
+
+        showTaskFormBtn.addEventListener('click', () => renderTaskForm());
+        showSubtaskFormBtn.addEventListener('click', () => renderSubtaskForm());
+        
+        mainTasksList.addEventListener('click', async (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+            const id = target.dataset.id;
+            
+            if (target.classList.contains('delete-process-btn')) {
+                if (confirm('¿Estás seguro de que quieres borrar este proceso?')) {
+                    try { await processesCollection.doc(id).delete(); } catch(err){ alert('Error al borrar'); }
+                }
+            } else if (target.classList.contains('edit-process-btn')) {
+                const doc = await processesCollection.doc(id).get();
+                renderTaskForm({ id: doc.id, ...doc.data() });
+            } else if (target.classList.contains('manage-checklist-btn')) {
+                const name = target.dataset.name;
+                const doc = await processesCollection.doc(id).get();
+                openChecklistModal(id, name, doc.data().checklist || []);
+            } else if (target.classList.contains('manage-fields-btn')) {
+                openCustomFieldsModal(id, target.dataset.name, 'process');
+            }
+        });
+        
+        subtasksList.addEventListener('click', async (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+            const id = target.dataset.id;
+            if (target.classList.contains('delete-subprocess-btn')) {
+                if (confirm('¿Estás seguro de que quieres borrar este subproceso?')) {
+                     try { await subprocessesCollection.doc(id).delete(); } catch(err){ alert('Error al borrar'); }
+                }
+            } else if (target.classList.contains('edit-subprocess-btn')) {
+                const doc = await subprocessesCollection.doc(id).get();
+                renderSubtaskForm({ id: doc.id, ...doc.data() });
+            } else if (target.classList.contains('manage-fields-btn')) {
+                openCustomFieldsModal(id, target.dataset.name, 'subprocess');
+            }
+        });
+
+        modalCancelBtn.addEventListener('click', () => {
+            checklistModal.classList.add('hidden');
+            checklistModal.classList.remove('flex');
+        });
+
+        modalSaveBtn.addEventListener('click', async () => {
+            const selectedIds = Array.from(modalSubtasksList.querySelectorAll('input:checked')).map(input => input.value);
+            try {
+                await processesCollection.doc(currentEditingItemId).update({ checklist: selectedIds });
+                checklistModal.classList.add('hidden');
+                checklistModal.classList.remove('flex');
+            } catch (err) {
+                console.error("Error updating checklist: ", err);
+                alert('No se pudo guardar el checklist.');
+            }
+        });
+
+        addCustomFieldForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const label = e.target.elements['field-label'].value.trim();
+            const type = e.target.elements['field-type'].value;
+            const required = e.target.elements['field-required'].checked;
+
+            if (!label) { alert('El nombre del campo es obligatorio.'); return; }
+            
+            const newField = { label, type, required };
+            const collection = currentEditingItemType === 'process' ? processesCollection : subprocessesCollection;
+            
+            try {
+                await collection.doc(currentEditingItemId).update({
+                    custom_fields: firebase.firestore.FieldValue.arrayUnion(newField)
+                });
+                addCustomFieldForm.reset();
+                const doc = await collection.doc(currentEditingItemId).get();
+                renderCustomFieldsList(doc.data().custom_fields || []);
+            } catch (err) {
+                console.error("Error adding custom field:", err);
+                alert("No se pudo agregar el campo.");
+            }
+        });
+
+        customFieldsList.addEventListener('click', async (e) => {
+            if (e.target.classList.contains('delete-field-btn')) {
+                const index = parseInt(e.target.dataset.index);
+                const collection = currentEditingItemType === 'process' ? processesCollection : subprocessesCollection;
+                
+                const doc = await collection.doc(currentEditingItemId).get();
+                let fields = doc.data().custom_fields || [];
+                fields.splice(index, 1);
+
+                try {
+                    await collection.doc(currentEditingItemId).update({ custom_fields: fields });
+                    renderCustomFieldsList(fields);
+                } catch(err) {
+                    console.error("Error deleting custom field:", err);
+                    alert("No se pudo eliminar el campo.");
+                }
+            }
+        });
+
+        customFieldsCloseBtn.addEventListener('click', () => {
+            customFieldsModal.classList.add('hidden');
+            customFieldsModal.classList.remove('flex');
+        });
+    });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Sistema de Productividad Taller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .btn-primary { transform: scale(1); transition: transform 0.1s ease-in-out, background-color 0.2s; }
+        .btn-primary:active { transform: scale(0.97); }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.6); }
+        .quantity-input { width: 70px; text-align: center; }
+        input[type='number']::-webkit-inner-spin-button,
+        input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type='number'] { -moz-appearance: textfield; }
+        
+        .finish-blocked {
+            background-color: #a0aec0 !important; /* gray-400 */
+            cursor: not-allowed;
+            position: relative;
+            overflow: hidden;
+        }
+        .finish-blocked::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: -10%;
+            width: 120%;
+            height: 3px;
+            background-color: rgba(239, 68, 68, 0.7); /* red-500 with opacity */
+            transform: rotate(-20deg);
+            transform-origin: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center transition-opacity duration-300 opacity-0 pointer-events-none">
+        <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-cyan-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p id="loading-text" class="mt-2 text-gray-600">Conectando al sistema...</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto max-w-xl">
+        <div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+            <div class="w-full">
+                <h1 class="text-3xl font-bold text-center text-gray-800 mb-8">¿Quién eres?</h1>
+                <div id="employee-list" class="space-y-3"></div>
+            </div>
+        </div>
+        <div id="main-screen" class="hidden">
+           <header id="main-header" class="p-4 flex justify-between items-center bg-white border-b sticky top-0 z-10"></header>
+           <main id="app-content" class="p-4"></main>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="part-request-modal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Solicitar Repuesto</h2>
+            <p class="text-gray-600 mb-4">Describe la pieza que necesitas. La solicitud aparecerá en gerencia.</p>
+            <textarea id="part-description" class="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-cyan-500" rows="4" placeholder="Ej: Cabezal de impresión para Epson L3150..."></textarea>
+            <div class="flex justify-end gap-4 mt-6">
+                <button onclick="toggleModal('part-request-modal', false)" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg btn-primary">Cancelar</button>
+                <button id="request-confirm-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg btn-primary">Enviar</button>
+            </div>
+        </div>
+    </div>
+    <div id="edit-request-modal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Gestionar Solicitud</h2>
+            <p class="text-gray-600 mb-4">Puedes modificar la descripción o eliminar la solicitud si ya no es necesaria.</p>
+            <textarea id="edit-part-description" class="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-cyan-500" rows="4"></textarea>
+            <div class="flex justify-between mt-6 gap-4">
+                <button id="edit-request-delete-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg btn-primary">Eliminar</button>
+                <div class="flex gap-4">
+                    <button id="edit-request-cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-5 rounded-lg btn-primary">Cancelar</button>
+                    <button id="edit-request-confirm-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-5 rounded-lg btn-primary">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="task-details-modal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-gray-800">Detalles del Proceso</h2>
+                <button onclick="toggleModal('task-details-modal', false)" class="text-2xl text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div id="task-details-content" class="p-6 overflow-y-auto"></div>
+            <div class="p-3 bg-gray-50 border-t flex justify-end">
+                 <button onclick="toggleModal('task-details-modal', false)" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg btn-primary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    <div id="cancel-task-modal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Anular Proceso</h2>
+            <p class="text-gray-600 mb-4">Para continuar, debes explicar por qué se anula este proceso. Esta acción no se puede deshacer.</p>
+            <label for="cancellation-reason" class="block text-sm font-medium text-gray-700 mt-4">Motivo de la anulación <span class="text-red-500">*</span></label>
+            <textarea id="cancellation-reason" class="w-full mt-1 p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-cyan-500" rows="3" placeholder="Describe por qué se anula el proceso..."></textarea>
+            <div class="flex justify-end gap-4 mt-6">
+                <button onclick="toggleModal('cancel-task-modal', false)" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg btn-primary">Cancelar</button>
+                <button id="cancel-confirm-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg btn-primary disabled:bg-red-300 disabled:cursor-not-allowed" disabled>Confirmar Anulación</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+            authDomain: "sistema-productividad-equipo.firebaseapp.com",
+            projectId: "sistema-productividad-equipo",
+            storageBucket: "sistema-productividad-equipo.appspot.com",
+            messagingSenderId: "196802708765",
+            appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        const employeesCol = db.collection('employees');
+        const processesCol = db.collection('processes');
+        const subprocessesCol = db.collection('subprocesses');
+        const activityLogsCol = db.collection('activity_logs');
+        const partRequestsCol = db.collection('part_requests');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            let currentUser = null;
+            let masterProcesses = [];
+            let masterSubprocesses = [];
+            let employeesMap = {};
+            let activeLogId = null;
+            let activeLogData = {};
+            let timerInterval = null;
+            let currentEditingRequestId = null;
+            let unsubscribeTimerRequests = null;
+            let unsubscribeMyPausedTasks = null;
+            let unsubscribePoolTasks = null;
+            let unsubscribeMyPausedRequests = null;
+            let unsubscribePoolRequests = null;
+
+            const loadingOverlay = document.getElementById('loading-overlay');
+            const loadingText = document.getElementById('loading-text');
+            const loginScreen = document.getElementById('login-screen');
+            const mainScreen = document.getElementById('main-screen');
+            const mainHeader = document.getElementById('main-header');
+            const appContent = document.getElementById('app-content');
+            const employeeListDiv = document.getElementById('employee-list');
+
+            const toggleLoading = (show, text = 'Cargando...') => {
+                loadingText.textContent = text;
+                if (show) {
+                    loadingOverlay.classList.remove('opacity-0', 'pointer-events-none');
+                } else {
+                    loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+                }
+            };
+            
+            window.toggleModal = (modalId, show) => {
+                const modal = document.getElementById(modalId);
+                if (show) {
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                } else {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                }
+            };
+
+            const init = async () => {
+                try {
+                    toggleLoading(true, 'Cargando datos maestros...');
+                    const [allEmployeesSnap, processesSnap, subprocessesSnap] = await Promise.all([
+                        employeesCol.get(),
+                        processesCol.get(),
+                        subprocessesCol.get()
+                    ]);
+
+                    const allEmployees = allEmployeesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    allEmployees.forEach(emp => { employeesMap[emp.id] = emp; });
+                    
+                    const activeEmployees = allEmployees.filter(emp => emp.is_active);
+                    
+                    masterProcesses = processesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    masterSubprocesses = subprocessesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    renderLoginScreen(activeEmployees);
+                } catch (error) {
+                    console.error("Error en la inicialización:", error);
+                    alert('No se pudo conectar a la base de datos.');
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            const renderLoginScreen = (employees) => {
+                employeeListDiv.innerHTML = !employees.length
+                    ? `<p class="text-center text-red-500">No hay empleados activos configurados.</p>`
+                    : employees.sort((a, b) => a.name.localeCompare(b.name)).map(emp => `
+                        <button data-employee-id="${emp.id}" class="employee-btn w-full text-left p-4 bg-white rounded-xl shadow-md hover:bg-cyan-50 font-semibold text-gray-800 text-lg btn-primary">
+                            ${emp.name}
+                        </button>
+                    `).join('');
+                 document.querySelectorAll('.employee-btn').forEach(btn => {
+                    btn.onclick = () => login(employees.find(e => e.id === btn.dataset.employeeId));
+                });
+            };
+
+            const login = async (employeeData) => {
+                currentUser = employeeData;
+                loginScreen.style.display = 'none';
+                mainScreen.style.display = 'block';
+                renderHeader();
+
+                toggleLoading(true, 'Verificando tareas...');
+                try {
+                    const snapshot = await activityLogsCol
+                        .where('assigned_employee_id', '==', currentUser.id)
+                        .where('status', '==', 'active')
+                        .limit(1)
+                        .get();
+
+                    if (!snapshot.empty) {
+                        const doc = snapshot.docs[0];
+                        activeLogId = doc.id;
+                        activeLogData = { id: doc.id, ...doc.data() };
+                        renderTimerView();
+                    } else {
+                        renderMainTabView();
+                    }
+                } catch (error) {
+                    console.error("Error checking for active task:", error);
+                    alert("No se pudo verificar el estado de las tareas. Se cargará la vista principal.");
+                    renderMainTabView();
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+            
+            const logout = () => {
+                currentUser = null;
+                if (timerInterval) clearInterval(timerInterval);
+                if (unsubscribeTimerRequests) unsubscribeTimerRequests();
+                if (unsubscribeMyPausedTasks) unsubscribeMyPausedTasks();
+                if (unsubscribePoolTasks) unsubscribePoolTasks();
+                if (unsubscribeMyPausedRequests) unsubscribeMyPausedRequests();
+                if (unsubscribePoolRequests) unsubscribePoolRequests();
+                mainScreen.style.display = 'none';
+                loginScreen.style.display = 'flex';
+            };
+
+            const renderHeader = () => {
+                mainHeader.innerHTML = `
+                    <h2 class="font-bold text-xl text-gray-800">Hola, ${currentUser.name.split(' ')[0]}</h2>
+                    <button id="logout-btn" class="bg-red-100 hover:bg-red-200 text-red-700 font-semibold py-2 px-4 rounded-lg text-sm btn-primary">Salir</button>
+                `;
+                document.getElementById('logout-btn').onclick = logout;
+            };
+
+            const renderMainTabView = () => {
+                mainHeader.classList.remove('hidden');
+                appContent.innerHTML = `
+                    <div class="flex border-b mb-4">
+                        <button data-tab="control" class="tab-btn py-3 px-4 text-sm font-medium border-b-2">Control</button>
+                        <button data-tab="finalizados" class="tab-btn py-3 px-4 text-sm font-medium border-b-2">Finalizados</button>
+                        <button data-tab="solicitudes" class="tab-btn py-3 px-4 text-sm font-medium border-b-2">Mis Solicitudes</button>
+                    </div>
+                    <div id="tab-content" class="space-y-8"></div>
+                `;
+                document.querySelectorAll('.tab-btn').forEach(button => {
+                    button.onclick = (e) => switchTab(e.currentTarget.dataset.tab);
+                });
+                switchTab('control');
+            };
+
+            const switchTab = (tabName) => {
+                 document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.toggle('border-cyan-600', btn.dataset.tab === tabName);
+                    btn.classList.toggle('text-cyan-600', btn.dataset.tab === tabName);
+                    btn.classList.toggle('border-transparent', btn.dataset.tab !== tabName);
+                    btn.classList.toggle('text-gray-500', btn.dataset.tab !== tabName);
+                });
+                const contentDiv = document.getElementById('tab-content');
+                contentDiv.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-md animate-pulse h-24"></div>`;
+
+                if (tabName === 'control') renderControlTab(contentDiv);
+                else if (tabName === 'finalizados') renderFinalizadosTab(contentDiv);
+                else if (tabName === 'solicitudes') renderSolicitudesTab(contentDiv);
+            };
+
+            const renderControlTab = (container) => {
+                container.innerHTML = `
+                    <div class="bg-white p-4 rounded-xl shadow-md">
+                        <h3 class="font-semibold text-gray-800 mb-4 text-lg">Iniciar Nuevo Proceso</h3>
+                        <select id="process-select" class="w-full p-3 border rounded-lg bg-gray-50 mb-4 text-gray-700"><option value="">-- Elige una opción --</option>${masterProcesses.sort((a,b) => a.name.localeCompare(b.name)).map(p => `<option value="${p.id}">${p.name}</option>`).join('')}</select>
+                        <button id="start-btn" class="w-full bg-cyan-600 text-white font-bold py-3 rounded-lg mt-2 btn-primary" disabled>Iniciar Proceso</button>
+                    </div>
+                    <div><h3 class="font-semibold text-gray-800 mb-2 text-lg">Mis Tareas en Pausa</h3><div id="my-paused-tasks-list" class="space-y-3"></div></div>
+                    <div><h3 class="font-semibold text-gray-800 mb-2 text-lg">Piscina de Tareas Disponibles</h3><div id="pool-tasks-list" class="space-y-3"></div></div>
+                `;
+                document.getElementById('process-select').onchange = (e) => { document.getElementById('start-btn').disabled = !e.target.value; };
+                document.getElementById('start-btn').onclick = startProcess;
+                listenForPausedTasks();
+            };
+            
+            const renderFinalizadosTab = (container) => {
+                const today = new Date().toISOString().split('T')[0];
+                container.innerHTML = `
+                    <h3 class="font-semibold text-gray-800 mb-2 text-lg">Mis Procesos Finalizados</h3>
+                    <div class="flex flex-wrap gap-2 items-center mb-4 bg-white p-3 rounded-xl shadow-md">
+                        <div class="flex-1 min-w-[150px]">
+                            <label for="start-date-filter" class="text-sm font-medium text-gray-600">Desde</label>
+                            <input type="date" id="start-date-filter" value="${today}" class="w-full mt-1 p-2 border rounded-md bg-gray-50">
+                        </div>
+                        <div class="flex-1 min-w-[150px]">
+                            <label for="end-date-filter" class="text-sm font-medium text-gray-600">Hasta</label>
+                            <input type="date" id="end-date-filter" value="${today}" class="w-full mt-1 p-2 border rounded-md bg-gray-50">
+                        </div>
+                        <div class="pt-6">
+                            <button id="filter-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg btn-primary">Filtrar</button>
+                        </div>
+                    </div>
+                    <div id="finalizados-list" class="space-y-3"></div>
+                `;
+
+                document.getElementById('filter-btn').onclick = fetchAndRenderCompletedTasks;
+                fetchAndRenderCompletedTasks();
+            };
+
+            const fetchAndRenderCompletedTasks = async () => {
+                const listContainer = document.getElementById('finalizados-list');
+                listContainer.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-md animate-pulse h-24"></div>`;
+                
+                const startDateStr = document.getElementById('start-date-filter').value;
+                const endDateStr = document.getElementById('end-date-filter').value;
+
+                if (!startDateStr || !endDateStr) return;
+
+                const startDate = new Date(startDateStr);
+                startDate.setUTCHours(0, 0, 0, 0);
+
+                const endDate = new Date(endDateStr);
+                endDate.setUTCHours(23, 59, 59, 999);
+                
+                try {
+                    const querySnapshot = await activityLogsCol
+                        .where('employee_id', '==', currentUser.id)
+                        .where('status', 'in', ['completed', 'annulled'])
+                        .orderBy('end_time', 'desc')
+                        .limit(50) 
+                        .get();
+                        
+                    const allTasks = querySnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    
+                    const tasks = allTasks.filter(task => {
+                        if (!task.end_time) return false;
+                        const taskEndTime = task.end_time.toDate();
+                        return taskEndTime >= startDate && taskEndTime <= endDate;
+                    });
+                    
+                    if (tasks.length === 0) {
+                        listContainer.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-md text-center text-gray-500">No se encontraron procesos finalizados para las fechas seleccionadas.</div>`;
+                    } else {
+                        listContainer.innerHTML = tasks.map(task => {
+                            const process = masterProcesses.find(p => p.id === task.process_id);
+                            const duration = ((task.total_duration_seconds || 0) / 60).toFixed(1);
+                            
+                            const isAnnulled = task.status === 'annulled';
+                            const borderColor = isAnnulled ? 'border-red-500' : 'border-green-500';
+                            const statusText = isAnnulled ? `<span class="font-bold text-red-600">ANULADO</span>` : `<span>Duración: ${duration} min</span>`;
+
+                            return `<div onclick="openCompletedTaskModal('${task.id}')" class="bg-white p-4 rounded-xl shadow-md border-l-4 ${borderColor} cursor-pointer hover:bg-gray-50 transition-colors">
+                                <p class="font-semibold text-gray-800">${process?.name || 'Proceso Desconocido'}</p>
+                                <div class="flex justify-between items-center text-sm text-gray-500 mt-1">
+                                    <span>${task.end_time.toDate().toLocaleString('es-VE')}</span>
+                                    ${statusText}
+                                </div>
+                            </div>`;
+                        }).join('');
+                    }
+                } catch (error) {
+                    console.error("Error fetching completed tasks:", error);
+                    listContainer.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-md text-center text-red-500">Error al cargar las tareas. Es posible que se necesite un índice en la base de datos. Revisa la consola para más detalles.</div>`;
+                }
+            };
+
+            const renderSolicitudesTab = (container) => {
+                const today = new Date().toISOString().split('T')[0];
+                container.innerHTML = `
+                    <h3 class="font-semibold text-gray-800 mb-2 text-lg">Mis Solicitudes de Repuestos</h3>
+                    <div class="space-y-4 mb-4 bg-white p-3 rounded-xl shadow-md">
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <div class="flex-1 min-w-[150px]">
+                                <label for="start-date-req-filter" class="text-sm font-medium text-gray-600">Desde</label>
+                                <input type="date" id="start-date-req-filter" value="${today}" class="w-full mt-1 p-2 border rounded-md bg-gray-50">
+                            </div>
+                            <div class="flex-1 min-w-[150px]">
+                                <label for="end-date-req-filter" class="text-sm font-medium text-gray-600">Hasta</label>
+                                <input type="date" id="end-date-req-filter" value="${today}" class="w-full mt-1 p-2 border rounded-md bg-gray-50">
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <div class="flex-1 min-w-[150px]">
+                                <label for="status-filter" class="text-sm font-medium text-gray-600">Estado</label>
+                                <select id="status-filter" class="w-full mt-1 p-2 border rounded-md bg-white">
+                                    <option value="Todos">Todos</option>
+                                    <option value="Solicitado">Solicitado</option>
+                                    <option value="Procesando">Procesando</option>
+                                    <option value="Pagado">Pagado</option>
+                                    <option value="Recibido">Recibido</option>
+                                    <option value="Entregado">Entregado</option>
+                                </select>
+                            </div>
+                            <div class="pt-6 flex-1 min-w-[150px]">
+                                <button id="filter-req-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg btn-primary">Filtrar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="solicitudes-list" class="space-y-3"></div>
+                `;
+                document.getElementById('filter-req-btn').onclick = fetchAndRenderRequests;
+                fetchAndRenderRequests();
+            };
+
+            const fetchAndRenderRequests = async () => {
+                const listContainer = document.getElementById('solicitudes-list');
+                listContainer.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-md animate-pulse h-24"></div>`;
+
+                const startDateStr = document.getElementById('start-date-req-filter').value;
+                const endDateStr = document.getElementById('end-date-req-filter').value;
+                const statusFilter = document.getElementById('status-filter').value;
+
+                if (!startDateStr || !endDateStr) return;
+
+                const startDate = new Date(startDateStr);
+                startDate.setUTCHours(0, 0, 0, 0);
+                const endDate = new Date(endDateStr);
+                endDate.setUTCHours(23, 59, 59, 999);
+                
+                try {
+                    const querySnapshot = await partRequestsCol
+                        .where('requesting_employee_id', '==', currentUser.id)
+                        .orderBy('created_at', 'desc')
+                        .get();
+
+                    const allRequests = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    const requests = allRequests.filter(req => {
+                        if (!req.created_at) return false;
+                        const reqDate = req.created_at.toDate();
+                        const dateMatch = reqDate >= startDate && reqDate <= endDate;
+                        const statusMatch = statusFilter === 'Todos' || req.status === statusFilter;
+                        return dateMatch && statusMatch;
+                    });
+                    
+                    if (requests.length === 0) {
+                        listContainer.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-md text-center text-gray-500">No se encontraron solicitudes para los filtros seleccionados.</div>`;
+                    } else {
+                        const statusColors = { 'Solicitado': 'bg-yellow-100 text-yellow-800', 'Procesando': 'bg-blue-100 text-blue-800', 'Pagado': 'bg-purple-100 text-purple-800', 'Recibido': 'bg-green-100 text-green-800', 'Entregado': 'bg-gray-200 text-gray-800' };
+                        listContainer.innerHTML = requests.map(req => {
+                            const process = masterProcesses.find(p => p.id === req.activity_log_process_id);
+                            const canManage = req.status === 'Solicitado';
+                            return `<div onclick="openCompletedTaskModal('${req.activity_log_id}')" class="bg-white p-4 rounded-xl shadow-md cursor-pointer hover:bg-gray-50 transition-colors">
+                                <p class="font-medium text-gray-800">${req.part_description}</p>
+                                <p class="text-sm text-gray-500 mt-1">Para: ${process?.name || 'N/A'}</p>
+                                <div class="flex justify-between items-center mt-3">
+                                    <span class="text-xs font-medium px-2 py-1 rounded-full ${statusColors[req.status] || 'bg-gray-200'}">${req.status}</span>
+                                    ${canManage ? `<div class="flex gap-2"><button onclick="event.stopPropagation(); openEditRequestModal('${req.id}', \`${req.part_description}\`)" class="edit-request-btn text-sm text-cyan-600 font-semibold">Modificar</button></div>` : ''}
+                                </div>
+                            </div>`;
+                        }).join('');
+                    }
+                } catch (error) {
+                    console.error("Error fetching requests:", error);
+                    listContainer.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-md text-center text-red-500">Error al cargar las solicitudes.</div>`;
+                }
+            };
+
+            const listenForPausedTasks = () => {
+                const myPausedList = document.getElementById('my-paused-tasks-list');
+                const poolList = document.getElementById('pool-tasks-list');
+
+                if (unsubscribeMyPausedTasks) unsubscribeMyPausedTasks();
+                unsubscribeMyPausedTasks = activityLogsCol
+                    .where('status', '==', 'paused')
+                    .where('assignment_type', '==', 'user')
+                    .where('assigned_employee_id', '==', currentUser.id)
+                    .onSnapshot(snapshot => processPausedTasksSnapshot(snapshot.docs, myPausedList, false), 
+                                error => console.error("Error listening for my paused tasks:", error));
+
+                if (unsubscribePoolTasks) unsubscribePoolTasks();
+                unsubscribePoolTasks = activityLogsCol
+                    .where('status', '==', 'paused')
+                    .where('assignment_type', '==', 'pool')
+                    .onSnapshot(snapshot => processPausedTasksSnapshot(snapshot.docs, poolList, true),
+                                error => console.error("Error listening for pool tasks:", error));
+            };
+
+            const processPausedTasksSnapshot = (docs, container, isPool) => {
+                if (docs.length === 0) {
+                    renderTaskList([], container, isPool, {});
+                    return;
+                }
+                const taskIds = docs.map(doc => doc.id);
+
+                if (isPool) {
+                    if (unsubscribePoolRequests) unsubscribePoolRequests();
+                    unsubscribePoolRequests = partRequestsCol.where('activity_log_id', 'in', taskIds.length > 0 ? taskIds : [' '])
+                        .onSnapshot(requestsSnap => {
+                            const requestsMap = buildRequestsMap(requestsSnap);
+                            renderTaskList(docs, container, isPool, requestsMap);
+                        });
+                } else {
+                    if (unsubscribeMyPausedRequests) unsubscribeMyPausedRequests();
+                    unsubscribeMyPausedRequests = partRequestsCol.where('activity_log_id', 'in', taskIds.length > 0 ? taskIds : [' '])
+                        .onSnapshot(requestsSnap => {
+                            const requestsMap = buildRequestsMap(requestsSnap);
+                            renderTaskList(docs, container, isPool, requestsMap);
+                        });
+                }
+            };
+            
+            const buildRequestsMap = (requestsSnap) => {
+                const requestsMap = {};
+                requestsSnap.forEach(doc => {
+                    const request = doc.data();
+                    if (!requestsMap[request.activity_log_id]) {
+                        requestsMap[request.activity_log_id] = [];
+                    }
+                    requestsMap[request.activity_log_id].push(request);
+                });
+                return requestsMap;
+            };
+
+            const renderTaskList = (docs, container, isPool, requestsMap) => {
+                if (!docs.length) {
+                    container.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-md text-center text-sm text-gray-500">No hay tareas aquí.</div>`;
+                    return;
+                }
+                container.innerHTML = docs.map(doc => {
+                    const task = {id: doc.id, ...doc.data()};
+                    const process = masterProcesses.find(p => p.id === task.process_id);
+                    
+                    let buttonsHtml = '';
+                    if (isPool) {
+                        buttonsHtml = `<button data-log-id="${task.id}" class="resume-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg btn-primary">Tomar</button>`;
+                    } else {
+                        buttonsHtml = `
+                        <div class="flex flex-col sm:flex-row gap-2 items-end">
+                            <button data-log-id="${task.id}" class="move-to-pool-btn bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-3 rounded-lg btn-primary text-sm">A Piscina</button>
+                            <button data-log-id="${task.id}" class="resume-btn bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg btn-primary">Reanudar</button>
+                        </div>`;
+                    }
+
+                    let borderClass = 'border-transparent';
+                    let statusInfo = '';
+                    const relatedRequests = requestsMap[task.id];
+
+                    if (relatedRequests && relatedRequests.length > 0) {
+                        const allDelivered = relatedRequests.every(req => req.status === 'Entregado');
+                        if (allDelivered) {
+                            borderClass = 'border-green-500';
+                            statusInfo = `<p class="text-xs font-semibold text-green-600 mt-1">Repuesto Entregado</p>`;
+                        } else {
+                            borderClass = 'border-yellow-400';
+                            statusInfo = `<p class="text-xs font-semibold text-yellow-600 mt-1">Esperando repuesto</p>`;
+                        }
+                    }
+
+                    return `
+                    <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center border-l-4 ${borderClass}">
+                        <div>
+                            <p class="font-semibold text-gray-800">${process?.name || 'Proceso Desconocido'}</p>
+                            <p class="text-xs text-gray-500">Pausado: ${task.last_paused_at?.toDate().toLocaleDateString('es-VE') || 'N/A'}</p>
+                            ${statusInfo}
+                        </div>
+                        ${buttonsHtml}
+                    </div>`;
+                }).join('');
+                container.querySelectorAll('.resume-btn').forEach(btn => btn.onclick = () => resumeProcess(btn.dataset.logId));
+                container.querySelectorAll('.move-to-pool-btn').forEach(btn => btn.onclick = () => moveToPool(btn.dataset.logId));
+            };
+
+            const checkFormValidity = () => {
+                const finishBtn = document.getElementById('finish-btn');
+                if (!finishBtn) return;
+
+                const timerRequestsSection = document.getElementById('timer-requests-section');
+                const requestSpans = timerRequestsSection ? timerRequestsSection.querySelectorAll('span.text-xs') : [];
+                let hasPendingRequests = false;
+                requestSpans.forEach(span => {
+                    if (span.textContent !== 'Entregado') {
+                        hasPendingRequests = true;
+                    }
+                });
+
+                let allRequiredFieldsFilled = true;
+                const process = masterProcesses.find(p => p.id === activeLogData.process_id);
+                
+                if (process && process.custom_fields) {
+                    for (const field of process.custom_fields) {
+                        if (field.required) {
+                            const input = document.querySelector(`[data-prefix="main"][data-label="${field.label}"]`);
+                            if (!input || input.value.trim() === '') {
+                                allRequiredFieldsFilled = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (allRequiredFieldsFilled) {
+                    const checkedSubprocesses = document.querySelectorAll('input[type="checkbox"][data-sub-id]:checked');
+                    for (const cb of checkedSubprocesses) {
+                        const sub = masterSubprocesses.find(s => s.id === cb.dataset.subId);
+                        if (sub && sub.custom_fields) {
+                            for (const field of sub.custom_fields) {
+                                if (field.required) {
+                                    const input = document.querySelector(`[data-prefix="sub-${sub.id}"][data-label="${field.label}"]`);
+                                    if (!input || input.value.trim() === '') {
+                                        allRequiredFieldsFilled = false;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (!allRequiredFieldsFilled) break;
+                    }
+                }
+                
+                const isFormValid = allRequiredFieldsFilled && !hasPendingRequests;
+                finishBtn.disabled = !isFormValid;
+                finishBtn.classList.toggle('finish-blocked', !isFormValid);
+            };
+
+            const renderTimerView = () => {
+                const process = masterProcesses.find(p => p.id === activeLogData.process_id);
+                const savedState = activeLogData.current_state || {};
+                mainHeader.classList.add('hidden');
+                
+                let fieldsHtml = (process.custom_fields && process.custom_fields.length > 0) ? `<div class="p-4 border-b"><h3 class="font-semibold text-lg mb-3">Datos del Proceso</h3>${renderCustomFields(process.custom_fields, savedState.custom_data || {}, 'main')}</div>` : '';
+                let checklistHtml = (process.is_composite && process.checklist && process.checklist.length > 0) ? `<div class="p-4"><h3 class="font-semibold text-lg mb-3">Checklist de Subprocesos</h3><div class="space-y-3">${process.checklist.map(subId => {
+                    const sub = masterSubprocesses.find(s => s.id === subId);
+                    if (!sub) return '';
+                    const savedSubState = (savedState.completed_subprocesses || []).find(s => s.subprocess_id === subId) || {};
+                    const isChecked = !!savedSubState.subprocess_id;
+                    return `<div class="bg-gray-50 p-3 rounded-lg border">
+                        <label class="flex items-center justify-between cursor-pointer">
+                            <span class="font-medium text-gray-800">${sub.name}</span>
+                            <input type="checkbox" data-sub-id="${sub.id}" class="h-5 w-5 rounded text-cyan-600 focus:ring-cyan-500" ${isChecked ? 'checked' : ''}>
+                        </label>
+                        ${sub.measurement_type === 'Cantidad' ? `<div class="mt-2 flex items-center gap-2"><label class="text-sm">Cantidad:</label><input type="number" value="${savedSubState.quantity || 1}" class="quantity-input border-gray-300 rounded-md p-1 w-20"></div>` : ''}
+                        <div id="sub-fields-${sub.id}" class="mt-3 pt-3 border-t ${!isChecked ? 'hidden' : ''}">${renderCustomFields(sub.custom_fields || [], savedSubState.custom_data || {}, `sub-${sub.id}`)}</div>
+                    </div>`;
+                }).join('')}</div></div>` : '';
+                
+                const formContentId = "timer-form-content";
+                appContent.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-md">
+                        <div class="p-4 border-b"><div class="flex justify-between items-center"><h2 class="text-xl font-bold text-gray-800">${process.name}</h2><div id="timer" class="text-2xl font-mono font-semibold bg-gray-100 px-3 py-1 rounded-lg">00:00:00</div></div></div>
+                        <div id="${formContentId}" class="max-h-[calc(100vh-220px)] overflow-y-auto">
+                            ${fieldsHtml}
+                            <div id="timer-requests-section"></div>
+                            ${checklistHtml}
+                        </div>
+                        <div class="p-3 bg-gray-50 grid grid-cols-2 gap-2 rounded-b-xl">
+                            <button id="pause-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-lg btn-primary">Pausar</button>
+                            <button onclick="toggleModal('part-request-modal', true)" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-lg btn-primary">Repuesto</button>
+                            <button id="cancel-task-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg btn-primary">Anular</button>
+                            <button id="finish-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg btn-primary">Finalizar</button>
+                        </div>
+                    </div>`;
+                
+                appContent.querySelector(`#${formContentId}`).oninput = checkFormValidity;
+                appContent.querySelectorAll('input[type="checkbox"][data-sub-id]').forEach(cb => {
+                    cb.onchange = () => {
+                        document.getElementById(`sub-fields-${cb.dataset.subId}`).classList.toggle('hidden', !cb.checked);
+                        checkFormValidity();
+                    };
+                });
+                
+                if (timerInterval) clearInterval(timerInterval);
+                timerInterval = setInterval(updateTimerDisplay, 1000);
+                document.getElementById('pause-btn').onclick = pauseProcess;
+                document.getElementById('cancel-task-btn').onclick = () => {
+                    document.getElementById('cancellation-reason').value = '';
+                    document.getElementById('cancel-confirm-btn').disabled = true;
+                    toggleModal('cancel-task-modal', true);
+                };
+                document.getElementById('finish-btn').onclick = finishProcess;
+
+                listenForPartRequestsInTimer();
+                checkFormValidity();
+            };
+
+            const listenForPartRequestsInTimer = () => {
+                if (unsubscribeTimerRequests) unsubscribeTimerRequests();
+                unsubscribeTimerRequests = partRequestsCol.where('activity_log_id', '==', activeLogId)
+                    .onSnapshot(snapshot => {
+                        const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        renderPartRequestsInTimer(requests);
+                    });
+            };
+
+            const renderPartRequestsInTimer = (requests) => {
+                const container = document.getElementById('timer-requests-section');
+                if (!container) return;
+
+                if (requests.length === 0) {
+                    container.innerHTML = '';
+                } else {
+                    const statusColors = { 'Solicitado': 'bg-yellow-100 text-yellow-800', 'Procesando': 'bg-blue-100 text-blue-800', 'Pagado': 'bg-purple-100 text-purple-800', 'Recibido': 'bg-green-100 text-green-800', 'Entregado': 'bg-gray-200 text-gray-800' };
+                    let content = `<div class="p-4 border-t"><h3 class="font-semibold text-lg mb-3">Solicitudes de Repuestos</h3><div class="space-y-3">`;
+                    requests.forEach(req => {
+                        const canManage = req.status === 'Solicitado';
+                        content += `<div class="bg-gray-50 p-3 rounded-lg border">
+                            <p class="font-medium text-gray-800">${req.part_description}</p>
+                            <div class="flex justify-between items-center mt-2">
+                                <span class="text-xs font-medium px-2 py-1 rounded-full ${statusColors[req.status] || 'bg-gray-200'}">${req.status}</span>
+                                ${canManage ? `<button onclick="openEditRequestModal('${req.id}', \`${req.part_description}\`)" class="text-sm text-cyan-600 font-semibold">Modificar</button>` : ''}
+                            </div>
+                        </div>`;
+                    });
+                    content += `</div></div>`;
+                    container.innerHTML = content;
+                }
+                checkFormValidity();
+            };
+
+            const renderCustomFields = (fields, data, prefix) => {
+                if (!fields || fields.length === 0) return '';
+                return fields.map((field, index) => {
+                    const fieldId = `${prefix}-field-${index}`;
+                    const value = data[field.label] ?? '';
+                    const required = field.required ? 'required' : '';
+                    let fieldHtml = `<div class="mb-3"><label for="${fieldId}" class="block text-sm font-medium text-gray-700">${field.label} ${field.required ? '<span class="text-red-500">*</span>' : ''}</label>`;
+                    if (field.type === 'boolean') {
+                        fieldHtml += `<select id="${fieldId}" data-label="${field.label}" data-prefix="${prefix}" ${required} class="mt-1 block w-full p-2 border border-gray-300 bg-white rounded-md">
+                            <option value="" ${value === '' ? 'selected' : ''}>--</option><option value="true" ${value === true ? 'selected' : ''}>Sí</option><option value="false" ${value === false ? 'selected' : ''}>No</option></select>`;
+                    } else {
+                        fieldHtml += `<input type="${field.type}" id="${fieldId}" data-label="${field.label}" data-prefix="${prefix}" value="${value}" ${required} class="mt-1 block w-full p-2 border border-gray-300 rounded-md">`;
+                    }
+                    return fieldHtml + `</div>`;
+                }).join('');
+            };
+
+            const updateTimerDisplay = () => {
+                const timerEl = document.getElementById('timer');
+                if (!timerEl || !activeLogData || !activeLogData.last_resumed_at) return;
+
+                const lastResumedDate = activeLogData.last_resumed_at.toDate();
+                const elapsedSinceSessionStart = Math.floor((new Date() - lastResumedDate) / 1000);
+
+                const totalSeconds = (activeLogData.total_duration_seconds || 0) + elapsedSinceSessionStart;
+                
+                if (totalSeconds < 0) return;
+
+                const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+                const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+                const seconds = String(totalSeconds % 60).padStart(2, '0');
+                timerEl.textContent = `${hours}:${minutes}:${seconds}`;
+            };
+            
+            const getCurrentState = () => {
+                const state = { custom_data: {}, completed_subprocesses: [] };
+                document.querySelectorAll('[data-prefix="main"]').forEach(input => { let value = input.value; if (input.tagName === 'SELECT') value = value === '' ? null : value === 'true'; state.custom_data[input.dataset.label] = value; });
+                document.querySelectorAll('input[type="checkbox"][data-sub-id]:checked').forEach(cb => {
+                    const subId = cb.dataset.subId, subContainer = cb.closest('.bg-gray-50'), quantityInput = subContainer.querySelector('.quantity-input');
+                    const subData = { subprocess_id: subId, quantity: quantityInput ? parseInt(quantityInput.value) || 1 : 1, custom_data: {} };
+                    subContainer.querySelectorAll(`[data-prefix="sub-${subId}"]`).forEach(input => { let value = input.value; if (input.tagName === 'SELECT') value = value === '' ? null : value === 'true'; subData.custom_data[input.dataset.label] = value; });
+                    state.completed_subprocesses.push(subData);
+                });
+                return state;
+            };
+
+            const startProcess = async () => {
+                const selectedProcessId = document.getElementById('process-select').value;
+                if (!selectedProcessId) return;
+                
+                toggleLoading(true, 'Iniciando proceso...');
+                try {
+                    const initialData = {
+                        employee_id: currentUser.id,
+                        process_id: selectedProcessId,
+                        assigned_employee_id: currentUser.id,
+                        assignment_type: 'user',
+                        status: 'active',
+                        start_time: firebase.firestore.FieldValue.serverTimestamp(),
+                        last_resumed_at: firebase.firestore.FieldValue.serverTimestamp(),
+                        total_duration_seconds: 0,
+                        current_state: null
+                    };
+
+                    const docRef = await activityLogsCol.add(initialData);
+                    const doc = await docRef.get(); 
+                    activeLogId = doc.id;
+                    activeLogData = { id: doc.id, ...doc.data() };
+                    
+                    renderTimerView();
+                } catch (error) { console.error("Error al iniciar proceso:", error); } finally { toggleLoading(false); }
+            };
+
+            const resumeProcess = async (logId) => {
+                toggleLoading(true, 'Reanudando tarea...');
+                try {
+                    const updateData = {
+                        status: 'active',
+                        last_resumed_at: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+
+                    const docRef = activityLogsCol.doc(logId);
+                    const preliminaryDoc = await docRef.get();
+                    if (!preliminaryDoc.exists) throw new Error("Task not found");
+
+                    if (preliminaryDoc.data().assignment_type === 'pool') {
+                        updateData.assignment_type = 'user';
+                        updateData.assigned_employee_id = currentUser.id;
+                    }
+                    
+                    await docRef.update(updateData);
+                    
+                    const finalDoc = await docRef.get();
+                    activeLogId = finalDoc.id;
+                    activeLogData = { id: finalDoc.id, ...finalDoc.data() };
+
+                    renderTimerView();
+                } catch (error) { console.error("Error resuming process:", error); alert('No se pudo reanudar la tarea.'); } finally { toggleLoading(false); }
+            };
+
+            const pauseProcess = async () => {
+                if (!activeLogId) return;
+                if (timerInterval) clearInterval(timerInterval);
+                if (unsubscribeTimerRequests) unsubscribeTimerRequests();
+                
+                const lastResumedDate = activeLogData.last_resumed_at.toDate();
+                const elapsedSinceSessionStart = Math.floor((new Date() - lastResumedDate) / 1000);
+                const newTotalDuration = (activeLogData.total_duration_seconds || 0) + elapsedSinceSessionStart;
+                
+                const currentState = getCurrentState();
+                toggleLoading(true, 'Pausando...');
+                try {
+                    await activityLogsCol.doc(activeLogId).update({
+                        status: 'paused',
+                        total_duration_seconds: newTotalDuration,
+                        last_paused_at: firebase.firestore.FieldValue.serverTimestamp(),
+                        current_state: currentState,
+                        last_resumed_at: firebase.firestore.FieldValue.delete()
+                    });
+                    activeLogId = null; activeLogData = {};
+                    renderMainTabView();
+                } catch(error) { console.error("Error al pausar:", error); } finally { toggleLoading(false); }
+            };
+            
+            const finishProcess = async () => {
+                if (!activeLogId || document.getElementById('finish-btn').disabled) return;
+                if (timerInterval) clearInterval(timerInterval);
+                if (unsubscribeTimerRequests) unsubscribeTimerRequests();
+                
+                const lastResumedDate = activeLogData.last_resumed_at.toDate();
+                const elapsedSinceSessionStart = Math.floor((new Date() - lastResumedDate) / 1000);
+                const finalTotalDuration = (activeLogData.total_duration_seconds || 0) + elapsedSinceSessionStart;
+                
+                const finalState = getCurrentState();
+                toggleLoading(true, 'Finalizando...');
+                try {
+                    const finalData = {
+                        status: 'completed',
+                        total_duration_seconds: finalTotalDuration,
+                        end_time: firebase.firestore.FieldValue.serverTimestamp(),
+                        custom_data: finalState.custom_data,
+                        completed_subprocesses: finalState.completed_subprocesses,
+                        current_state: firebase.firestore.FieldValue.delete(),
+                        last_resumed_at: firebase.firestore.FieldValue.delete()
+                    };
+                    await activityLogsCol.doc(activeLogId).set(finalData, { merge: true });
+                    activeLogId = null; activeLogData = {};
+                    renderMainTabView();
+                } catch(error) { 
+                    alert('ERROR: No se pudo guardar el proceso. Detalles en la consola.');
+                    console.error("Error al finalizar:", error); 
+                } finally { 
+                    toggleLoading(false); 
+                }
+            };
+            
+            const cancelProcess = async () => {
+                if (!activeLogId) return;
+                const reason = document.getElementById('cancellation-reason').value.trim();
+                if (!reason) return;
+
+                toggleModal('cancel-task-modal', false);
+                toggleLoading(true, 'Anulando...');
+
+                if (timerInterval) clearInterval(timerInterval);
+                if (unsubscribeTimerRequests) unsubscribeTimerRequests();
+
+                const lastResumedDate = activeLogData.last_resumed_at.toDate();
+                const elapsedSinceSessionStart = Math.floor((new Date() - lastResumedDate) / 1000);
+                const finalTotalDuration = (activeLogData.total_duration_seconds || 0) + elapsedSinceSessionStart;
+                const finalState = getCurrentState();
+
+                try {
+                    const finalData = {
+                        status: 'annulled',
+                        cancellation_reason: reason,
+                        total_duration_seconds: finalTotalDuration,
+                        end_time: firebase.firestore.FieldValue.serverTimestamp(),
+                        custom_data: finalState.custom_data,
+                        completed_subprocesses: finalState.completed_subprocesses,
+                        current_state: firebase.firestore.FieldValue.delete(),
+                        last_resumed_at: firebase.firestore.FieldValue.delete()
+                    };
+                    await activityLogsCol.doc(activeLogId).set(finalData, { merge: true });
+                    
+                    activeLogId = null; 
+                    activeLogData = {};
+                    renderMainTabView();
+                } catch(error) {
+                    alert('ERROR: No se pudo anular el proceso. Detalles en la consola.');
+                    console.error("Error al anular:", error);
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            const moveToPool = async (logId) => {
+                toggleLoading(true, 'Moviendo a la piscina...');
+                try {
+                    await activityLogsCol.doc(logId).update({
+                        assignment_type: 'pool',
+                        assigned_employee_id: null
+                    });
+                    listenForPausedTasks();
+                } catch (error) {
+                    console.error("Error moving task to pool:", error);
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            const requestPart = async () => {
+                if (!activeLogId) return;
+                const description = document.getElementById('part-description').value.trim();
+                if (!description) return;
+                const newRequest = { requesting_employee_id: currentUser.id, activity_log_id: activeLogId, activity_log_process_id: activeLogData.process_id, part_description: description, status: 'Solicitado', created_at: firebase.firestore.FieldValue.serverTimestamp() };
+                toggleLoading(true, 'Enviando solicitud...');
+                try {
+                    await partRequestsCol.add(newRequest);
+                    await activityLogsCol.doc(activeLogId).update({ part_request_status: 'pending' });
+                    activeLogData.part_request_status = 'pending';
+                    document.getElementById('part-description').value = '';
+                    toggleModal('part-request-modal', false);
+                } catch (error) { console.error("Error al solicitar repuesto:", error); } finally { toggleLoading(false); }
+            };
+
+            window.openCompletedTaskModal = async (logId) => {
+                if (!logId) return;
+                toggleLoading(true, 'Cargando detalles...');
+                try {
+                    const logDoc = await activityLogsCol.doc(logId).get();
+                    if (!logDoc.exists) throw new Error("Log not found");
+
+                    const logData = logDoc.data();
+                    const process = masterProcesses.find(p => p.id === logData.process_id);
+                    
+                    const requestsSnap = await partRequestsCol.where('activity_log_id', '==', logId).get();
+                    const requests = requestsSnap.docs.map(doc => doc.data());
+
+                    const durationSeconds = logData.total_duration_seconds || 0;
+                    const hours = Math.floor(durationSeconds / 3600);
+                    const minutes = Math.floor((durationSeconds % 3600) / 60);
+                    const seconds = durationSeconds % 60;
+                    const durationFormatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                    
+                    const statusText = logData.status === 'completed' ? 'Completado' : 'Anulado';
+                    
+                    let detailsHtml = `<div class="space-y-4">`;
+                    detailsHtml += `
+                        <div><p class="text-sm text-gray-500">Proceso</p><p class="font-semibold text-lg">${process?.name || 'N/A'}</p></div>
+                        <div class="grid grid-cols-2 gap-4">
+                           <div><p class="text-sm text-gray-500">Técnico</p><p class="font-semibold">${employeesMap[logData.employee_id]?.name || 'Desconocido'}</p></div>
+                           <div><p class="text-sm text-gray-500">Estado</p><p class="font-semibold ${logData.status === 'annulled' ? 'text-red-600' : ''}">${statusText}</p></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div><p class="text-gray-500">Inicio</p><p class="font-medium">${logData.start_time ? logData.start_time.toDate().toLocaleString('es-VE') : 'N/A'}</p></div>
+                            <div><p class="text-gray-500">Finalización</p><p class="font-medium">${logData.end_time ? logData.end_time.toDate().toLocaleString('es-VE') : 'En Progreso'}</p></div>
+                        </div>
+                        <div><p class="text-sm text-gray-500">Tiempo Total Utilizado</p><p class="font-semibold text-lg">${durationFormatted}</p></div>
+                    `;
+
+                    if (logData.status === 'annulled' && logData.cancellation_reason) {
+                        detailsHtml += `<div><p class="text-sm text-gray-500">Motivo de Anulación</p><p class="font-medium bg-red-50 p-2 rounded-md border border-red-200 text-red-800">${logData.cancellation_reason}</p></div>`;
+                    }
+
+                    const dataToShow = (logData.status === 'completed' || logData.status === 'annulled') ? logData : (logData.current_state || {});
+
+                    if (dataToShow.custom_data && Object.keys(dataToShow.custom_data).length > 0) {
+                        detailsHtml += `<hr><h4 class="font-semibold text-gray-700">Datos del Proceso</h4><div class="space-y-1 text-sm">`;
+                        for (const [key, value] of Object.entries(dataToShow.custom_data)) {
+                            detailsHtml += `<p><strong class="font-medium">${key}:</strong> ${value === true ? 'Sí' : value === false ? 'No' : (value || 'No especificado')}</p>`;
+                        }
+                        detailsHtml += `</div>`;
+                    }
+                    
+                    if (dataToShow.completed_subprocesses && dataToShow.completed_subprocesses.length > 0) {
+                        detailsHtml += `<hr><h4 class="font-semibold text-gray-700">Subprocesos Realizados</h4><div class="space-y-3">`;
+                        dataToShow.completed_subprocesses.forEach(subLog => {
+                            const subProcess = masterSubprocesses.find(s => s.id === subLog.subprocess_id);
+                            detailsHtml += `<div class="bg-gray-50 p-3 rounded-lg border text-sm">
+                                <p class="font-semibold">${subProcess?.name || 'N/A'} ${subLog.quantity > 1 ? `(x${subLog.quantity})` : ''}</p>`;
+                            if (subLog.custom_data && Object.keys(subLog.custom_data).length > 0) {
+                                 detailsHtml += `<div class="pl-2 mt-1 border-l-2">`;
+                                for (const [key, value] of Object.entries(subLog.custom_data)) {
+                                    detailsHtml += `<p><strong class="font-medium">${key}:</strong> ${value === true ? 'Sí' : value === false ? 'No' : (value || 'No especificado')}</p>`;
+                                }
+                                 detailsHtml += `</div>`;
+                            }
+                            detailsHtml += `</div>`;
+                        });
+                        detailsHtml += `</div>`;
+                    }
+                    
+                    if (requests.length > 0) {
+                        const statusColors = { 'Solicitado': 'text-yellow-800', 'Procesando': 'text-blue-800', 'Pagado': 'text-purple-800', 'Recibido': 'text-green-800', 'Entregado': 'text-gray-800' };
+                        detailsHtml += `<hr><h4 class="font-semibold text-gray-700">Repuestos Solicitados</h4><div class="space-y-2 text-sm">`;
+                        requests.forEach(req => {
+                            detailsHtml += `<div class="flex justify-between items-center">
+                                <p>${req.part_description}</p>
+                                <span class="font-semibold ${statusColors[req.status] || 'text-gray-800'}">${req.status}</span>
+                            </div>`;
+                        });
+                        detailsHtml += `</div>`;
+                    }
+
+                    detailsHtml += `</div>`;
+                    document.getElementById('task-details-content').innerHTML = detailsHtml;
+                    toggleModal('task-details-modal', true);
+                } catch (error) {
+                    console.error("Error opening task details:", error);
+                    alert("No se pudieron cargar los detalles de la tarea.");
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            window.openEditRequestModal = (id, description) => {
+                currentEditingRequestId = id;
+                document.getElementById('edit-part-description').value = description;
+                toggleModal('edit-request-modal', true);
+            };
+            const closeEditRequestModal = () => { toggleModal('edit-request-modal', false); currentEditingRequestId = null; };
+            
+            const saveRequestChanges = async () => {
+                const newDescription = document.getElementById('edit-part-description').value.trim();
+                if (!newDescription || !currentEditingRequestId) return;
+                toggleLoading(true, 'Guardando...');
+                try {
+                    await partRequestsCol.doc(currentEditingRequestId).update({ part_description: newDescription });
+                    closeEditRequestModal(); 
+                    if (!activeLogId) fetchAndRenderRequests();
+                } catch(error) { console.error("Error al guardar cambios de solicitud:", error); } finally { toggleLoading(false); }
+            };
+
+            const deleteRequest = async () => {
+                if (!currentEditingRequestId) return;
+                toggleLoading(true, 'Eliminando...');
+                try {
+                    const requestDocRef = partRequestsCol.doc(currentEditingRequestId);
+                    const requestDoc = await requestDocRef.get();
+                    const logIdToDeleteFrom = requestDoc.data().activity_log_id;
+                    await requestDocRef.delete();
+                    const otherRequestsSnap = await partRequestsCol.where('activity_log_id', '==', logIdToDeleteFrom).get();
+                    if (otherRequestsSnap.empty) {
+                        await activityLogsCol.doc(logIdToDeleteFrom).update({
+                            part_request_status: firebase.firestore.FieldValue.delete()
+                        });
+                        if (activeLogId === logIdToDeleteFrom) {
+                            delete activeLogData.part_request_status;
+                        }
+                    }
+                    closeEditRequestModal(); 
+                    if (!activeLogId) fetchAndRenderRequests();
+                } catch(error) { console.error("Error al eliminar la solicitud:", error); } finally { toggleLoading(false); }
+            };
+            
+            const cancellationReasonInput = document.getElementById('cancellation-reason');
+            const cancelConfirmBtn = document.getElementById('cancel-confirm-btn');
+
+            cancellationReasonInput.addEventListener('input', () => {
+                cancelConfirmBtn.disabled = cancellationReasonInput.value.trim() === '';
+            });
+
+            document.getElementById('request-confirm-btn').onclick = requestPart;
+            document.getElementById('edit-request-cancel-btn').onclick = closeEditRequestModal;
+            document.getElementById('edit-request-confirm-btn').onclick = saveRequestChanges;
+            document.getElementById('edit-request-delete-btn').onclick = deleteRequest;
+            document.getElementById('cancel-confirm-btn').onclick = cancelProcess;
+            
+            init();
+        });
+    </script>
+</body>
+</html>

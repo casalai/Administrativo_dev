@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Gerencia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.75); }
+        .kpi-card { transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; }
+        .kpi-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-cyan-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p id="loading-text" class="mt-2 text-gray-600">Cargando Datos del Reporte...</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Dashboard de Reportes y Análisis</h1>
+            <p class="text-gray-500">Visualiza la productividad y el rendimiento de tu equipo.</p>
+        </div>
+
+        <div id="kpi-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"></div>
+        
+        <div class="mb-8">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Actividad en Tiempo Real</h2>
+            <div id="real-time-activity-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <p class="text-gray-500 col-span-full text-center">Cargando actividad...</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-4">Procesos en Pausa</h2>
+                <div id="paused-tasks-container" class="space-y-3 max-h-96 overflow-y-auto"></div>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+                    <h2 class="text-2xl font-semibold text-gray-700">Solicitudes de Repuestos</h2>
+                    <select id="part-request-filter" class="border-gray-300 rounded-md shadow-sm bg-white p-2">
+                        <option value="all">Todos los Estados</option>
+                        <option value="Solicitado">Solicitado</option>
+                        <option value="Procesando">Procesando</option>
+                        <option value="Pagado">Pagado</option>
+                        <option value="Recibido">Recibido</option>
+                        <option value="Entregado">Entregado</option>
+                    </select>
+                </div>
+                <div id="part-requests-container" class="space-y-3 max-h-96 overflow-y-auto"></div>
+            </div>
+        </div>
+        
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                 <h2 class="text-2xl font-semibold text-gray-700">Análisis de Productividad</h2>
+                 <div class="flex items-center gap-2" id="chart-filter-buttons">
+                     <button data-range="day" class="chart-range-btn bg-gray-200 hover:bg-cyan-600 hover:text-white text-gray-700 font-semibold py-1 px-3 rounded-md text-sm">Día</button>
+                     <button data-range="week" class="chart-range-btn bg-cyan-600 text-white font-semibold py-1 px-3 rounded-md text-sm">Semana</button>
+                     <button data-range="month" class="chart-range-btn bg-gray-200 hover:bg-cyan-600 hover:text-white text-gray-700 font-semibold py-1 px-3 rounded-md text-sm">Mes</button>
+                     <button data-range="year" class="chart-range-btn bg-gray-200 hover:bg-cyan-600 hover:text-white text-gray-700 font-semibold py-1 px-3 rounded-md text-sm">Año</button>
+                 </div>
+            </div>
+            <div>
+                <canvas id="employee-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+             <h2 class="text-2xl font-semibold text-gray-700 mb-4">Registro Histórico de Actividades</h2>
+             <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-gray-500">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3">Fecha</th>
+                            <th scope="col" class="px-6 py-3">Empleado</th>
+                            <th scope="col" class="px-6 py-3">Proceso</th>
+                            <th scope="col" class="px-6 py-3">Duración</th>
+                            <th scope="col" class="px-6 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="activity-table-body">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div id="details-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b">
+                <h2 class="text-2xl font-bold text-gray-800">Detalles de la Actividad</h2>
+            </div>
+            <div id="modal-content" class="p-6 overflow-y-auto"></div>
+            <div class="p-4 bg-gray-50 border-t flex justify-end">
+                <button onclick="toggleModal('details-modal', false)" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    <div id="reassign-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Reasignar Proceso</h2>
+            <p class="mb-4 text-gray-600">Selecciona un nuevo técnico o mueve el proceso a la piscina de tareas disponibles.</p>
+            <select id="employee-reassign-select" class="w-full p-3 border rounded-lg bg-gray-50 mb-4"></select>
+            <div class="flex justify-end gap-4 mt-6">
+                <button onclick="toggleModal('reassign-modal', false)" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                <button id="reassign-confirm-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+            authDomain: "sistema-productividad-equipo.firebaseapp.com",
+            projectId: "sistema-productividad-equipo",
+            storageBucket: "sistema-productividad-equipo.appspot.com",
+            messagingSenderId: "196802708765",
+            appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const employeesCol = db.collection('employees');
+        const processesCol = db.collection('processes');
+        const subprocessesCol = db.collection('subprocesses');
+        const activityLogsCol = db.collection('activity_logs');
+        const partRequestsCol = db.collection('part_requests');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Referencias DOM ---
+            const loadingOverlay = document.getElementById('loading-overlay');
+            const loadingText = document.getElementById('loading-text');
+            const kpiContainer = document.getElementById('kpi-container');
+            const activityTableBody = document.getElementById('activity-table-body');
+            const realTimeContainer = document.getElementById('real-time-activity-container');
+            const chartCanvas = document.getElementById('employee-chart');
+            const chartFilterButtons = document.getElementById('chart-filter-buttons');
+            const pausedTasksContainer = document.getElementById('paused-tasks-container');
+            const partRequestsContainer = document.getElementById('part-requests-container');
+            const partRequestFilter = document.getElementById('part-request-filter');
+            const employeeReassignSelect = document.getElementById('employee-reassign-select');
+            
+            // --- Estado Global ---
+            let employeesMap = {};
+            let processesMap = {};
+            let subprocessesMap = {};
+            let employeeChart = null;
+            let activeTimersInterval = null;
+            let currentReassigningLogId = null;
+            let completedLogsCache = [];
+
+            const toggleLoading = (show, text = 'Cargando...') => {
+                loadingText.textContent = text;
+                if (show) {
+                    loadingOverlay.style.display = 'flex';
+                } else {
+                    loadingOverlay.style.display = 'none';
+                }
+            };
+
+            window.toggleModal = (modalId, show) => {
+                const modal = document.getElementById(modalId);
+                if (show) modal.classList.add('flex'); else modal.classList.remove('flex');
+                if (show) modal.classList.remove('hidden'); else modal.classList.add('hidden');
+            };
+
+            const init = async () => {
+                try {
+                    const [employeesSnap, processesSnap, subprocessesSnap] = await Promise.all([
+                        employeesCol.get(),
+                        processesCol.get(),
+                        subprocessesCol.get()
+                    ]);
+                    employeesSnap.docs.forEach(doc => employeesMap[doc.id] = doc.data());
+                    processesSnap.docs.forEach(doc => processesMap[doc.id] = doc.data());
+                    subprocessesSnap.docs.forEach(doc => subprocessesMap[doc.id] = doc.data());
+
+                    populateReassignDropdown();
+                    listenForActiveTasks();
+                    listenForPausedTasks();
+                    listenForPartRequests();
+                    
+                    chartFilterButtons.querySelector('[data-range="week"]').click(); // Carga inicial de datos
+                } catch (error) {
+                    console.error("Initialization failed:", error);
+                    alert("No se pudieron cargar los datos maestros.");
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            const fetchAndRenderDataForRange = async (startDate, endDate) => {
+                try {
+                    const querySnapshot = await activityLogsCol
+                        .where('status', '==', 'completed')
+                        .where('end_time', '>=', startDate)
+                        .where('end_time', '<=', endDate)
+                        .get();
+                    
+                    completedLogsCache = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    completedLogsCache.sort((a, b) => b.end_time.toMillis() - a.end_time.toMillis());
+
+                    renderKPIs(completedLogsCache);
+                    renderActivityTable(completedLogsCache);
+                    renderEmployeeChart(completedLogsCache);
+
+                } catch (error) {
+                    console.error("Error fetching logs:", error);
+                    alert("Error al cargar los registros. Es posible que un índice de base de datos sea necesario. Revisa la consola para más detalles.");
+                }
+            };
+
+            const renderKPIs = (logs) => {
+                const totalHours = logs.reduce((acc, log) => acc + (log.total_duration_seconds || 0), 0) / 3600;
+                const totalProcesses = logs.length;
+                const activeEmployees = new Set(logs.map(log => log.employee_id)).size;
+                kpiContainer.innerHTML = `
+                    <div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Horas Registradas</h3><p class="text-3xl font-bold text-gray-800 mt-2">${totalHours.toFixed(2)}</p></div>
+                    <div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Procesos Completados</h3><p class="text-3xl font-bold text-gray-800 mt-2">${totalProcesses}</p></div>
+                    <div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Empleados Activos</h3><p class="text-3xl font-bold text-gray-800 mt-2">${activeEmployees}</p></div>
+                    <div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Tiempo Promedio / Proceso</h3><p class="text-3xl font-bold text-gray-800 mt-2">${totalProcesses > 0 ? (totalHours * 60 / totalProcesses).toFixed(1) : 0} min</p></div>`;
+            };
+            
+            const renderActivityTable = (logs) => {
+                activityTableBody.innerHTML = logs.length === 0 
+                    ? `<tr><td colspan="5" class="text-center p-6 text-gray-500">No hay actividades completadas en este rango.</td></tr>`
+                    : logs.map(log => {
+                        const duration_min = ((log.total_duration_seconds || 0) / 60).toFixed(1);
+                        return `<tr class="bg-white border-b hover:bg-gray-50">
+                            <td class="px-6 py-4">${log.end_time.toDate().toLocaleString('es-VE')}</td>
+                            <td class="px-6 py-4 font-medium text-gray-900">${employeesMap[log.employee_id]?.name || 'N/A'}</td>
+                            <td class="px-6 py-4">${processesMap[log.process_id]?.name || 'N/A'}</td>
+                            <td class="px-6 py-4">${duration_min} min</td>
+                            <td class="px-6 py-4 text-right"><button onclick="showDetailsModal('${log.id}')" class="font-medium text-cyan-600 hover:underline">Ver Detalles</button></td>
+                        </tr>`;
+                    }).join('');
+            };
+            
+            window.showDetailsModal = async (logId) => {
+                toggleLoading(true, 'Cargando detalles...');
+                try {
+                    const logDoc = await activityLogsCol.doc(logId).get();
+                    if (!logDoc.exists) return;
+                    
+                    const log = logDoc.data();
+                    const process = processesMap[log.process_id];
+                    const dataToShow = log.status === 'paused' ? log.current_state : log;
+                    
+                    const durationSeconds = log.total_duration_seconds || 0;
+                    const hours = Math.floor(durationSeconds / 3600);
+                    const minutes = Math.floor((durationSeconds % 3600) / 60);
+                    const durationFormatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(durationSeconds % 60).padStart(2, '0')}`;
+
+                    let contentHtml = `<div class="space-y-4">
+                        <div><p class="text-sm text-gray-500">Proceso</p><p class="font-semibold text-lg">${process?.name || 'N/A'}</p></div>
+                        <div><p class="text-sm text-gray-500">Empleado</p><p class="font-semibold">${employeesMap[log.assigned_employee_id || log.employee_id]?.name || 'N/A'}</p></div>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div><p class="text-gray-500">Inicio</p><p class="font-medium">${log.start_time.toDate().toLocaleString('es-VE')}</p></div>
+                            <div><p class="text-gray-500">${log.status === 'completed' ? 'Finalización' : 'Última Pausa'}</p><p class="font-medium">${(log.end_time || log.last_paused_at)?.toDate().toLocaleString('es-VE') || 'N/A'}</p></div>
+                        </div>
+                        <div><p class="text-sm text-gray-500">Tiempo Total Acumulado</p><p class="font-semibold text-lg">${durationFormatted}</p></div>
+                    `;
+
+                    if (dataToShow?.custom_data && Object.keys(dataToShow.custom_data).length > 0) {
+                        contentHtml += `<hr><h4 class="font-semibold text-gray-700">Datos del Proceso</h4><div class="space-y-1 text-sm">${Object.entries(dataToShow.custom_data).map(([key, value]) => `<p><strong class="font-medium">${key}:</strong> ${value === true ? 'Sí' : value === false ? 'No' : value || 'No espec.'}</p>`).join('')}</div>`;
+                    }
+                    if (dataToShow?.completed_subprocesses && dataToShow.completed_subprocesses.length > 0) {
+                        contentHtml += `<hr><h4 class="font-semibold text-gray-700">Subprocesos Realizados</h4><div class="space-y-3">${dataToShow.completed_subprocesses.map(subLog => {
+                            const subProcess = subprocessesMap[subLog.subprocess_id];
+                            let subContent = `<div class="bg-gray-50 p-3 rounded-lg border text-sm"><p class="font-semibold">${subProcess?.name || 'N/A'} ${subLog.quantity > 1 ? `(x${subLog.quantity})` : ''}</p>`;
+                            if (subLog.custom_data && Object.keys(subLog.custom_data).length > 0) {
+                                subContent += `<div class="pl-2 mt-1 border-l-2">${Object.entries(subLog.custom_data).map(([key, value]) => `<p><strong class="font-medium">${key}:</strong> ${value === true ? 'Sí' : value === false ? 'No' : value || 'No espec.'}</p>`).join('')}</div>`;
+                            }
+                            return subContent + `</div>`;
+                        }).join('')}</div>`;
+                    }
+                    contentHtml += `</div>`;
+                    document.getElementById('modal-content').innerHTML = contentHtml;
+                    toggleModal('details-modal', true);
+                } catch (err) {
+                    console.error("Error showing details:", err)
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            const listenForActiveTasks = () => {
+                 activityLogsCol.where('status', '==', 'active').onSnapshot(snapshot => {
+                    const activeTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    renderActiveTasks(activeTasks);
+                }, err => console.error("Error fetching active tasks:", err));
+            };
+
+            const renderActiveTasks = (tasks) => {
+                if (activeTimersInterval) clearInterval(activeTimersInterval);
+                if (tasks.length === 0) {
+                    realTimeContainer.innerHTML = `<p class="text-gray-500 col-span-full text-center">Nadie está trabajando en un proceso en este momento.</p>`;
+                    return;
+                }
+                realTimeContainer.innerHTML = tasks.map(task => `
+                    <div class="bg-white p-4 rounded-xl shadow-lg border-l-4 border-green-500">
+                        <p class="font-bold text-gray-800">${employeesMap[task.assigned_employee_id]?.name || 'N/A'}</p>
+                        <p class="text-sm text-gray-600 font-medium">${processesMap[task.process_id]?.name || 'N/A'}</p>
+                        <p class="text-lg font-mono font-semibold text-gray-900 mt-2" data-last-resumed-time="${task.last_resumed_at?.toMillis()}" data-total-seconds="${task.total_duration_seconds || 0}">Cargando...</p>
+                    </div>`).join('');
+                activeTimersInterval = setInterval(updateActiveTimers, 1000);
+                updateActiveTimers(); // Run once immediately to prevent flashing "Cargando..."
+            };
+
+            const updateActiveTimers = () => {
+                 realTimeContainer.querySelectorAll('[data-last-resumed-time]').forEach(timerEl => {
+                    const lastResumedTime = parseInt(timerEl.dataset.lastResumedTime);
+                    if (isNaN(lastResumedTime)) {
+                        timerEl.textContent = 'Calculando...';
+                        return;
+                    }
+                    
+                    const totalSecondsBeforeActive = parseInt(timerEl.dataset.totalSeconds);
+                    const elapsedSinceResumed = Math.round((Date.now() - lastResumedTime) / 1000);
+                    const totalElapsed = totalSecondsBeforeActive + elapsedSinceResumed;
+
+                    if (totalElapsed < 0) return;
+
+                    const hours = String(Math.floor(totalElapsed / 3600)).padStart(2, '0');
+                    const minutes = String(Math.floor((totalElapsed % 3600) / 60)).padStart(2, '0');
+                    const seconds = String(totalElapsed % 60).padStart(2, '0');
+                    timerEl.textContent = `${hours}:${minutes}:${seconds}`;
+                });
+            };
+
+            const renderEmployeeChart = (logs) => {
+                const dataByEmployee = logs.reduce((acc, log) => {
+                    const employeeName = employeesMap[log.employee_id]?.name || 'Desconocido';
+                    const durationHours = (log.total_duration_seconds || 0) / 3600;
+                    if (!acc[employeeName]) acc[employeeName] = 0;
+                    acc[employeeName] += durationHours;
+                    return acc;
+                }, {});
+                const labels = Object.keys(dataByEmployee);
+                const data = Object.values(dataByEmployee);
+                if (employeeChart) employeeChart.destroy();
+                employeeChart = new Chart(chartCanvas, { type: 'bar', data: { labels, datasets: [{ label: 'Horas Registradas', data, backgroundColor: 'rgba(22, 163, 175, 0.7)' }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Horas' } } } } });
+            };
+            const listenForPausedTasks = () => {
+                 activityLogsCol.where('status', '==', 'paused').onSnapshot(snapshot => {
+                    renderPausedTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                }, err => console.error("Error fetching paused tasks:", err));
+            };
+            const listenForPartRequests = () => {
+                partRequestsCol.orderBy('created_at', 'desc').onSnapshot(snapshot => {
+                    const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    renderPartRequests(requests);
+                }, err => console.error("Error fetching part requests:", err));
+            };
+            const renderPausedTasks = (tasks) => {
+                pausedTasksContainer.innerHTML = tasks.length === 0 ? `<p class="text-gray-500 text-center">No hay procesos en pausa.</p>` : tasks.map(task => {
+                    const assignedTo = task.assignment_type === 'pool' ? '<span class="font-semibold text-blue-600">Piscina</span>' : employeesMap[task.assigned_employee_id]?.name || 'N/A';
+                    return `<div class="p-3 bg-gray-50 rounded-lg border">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-bold text-gray-800">${processesMap[task.process_id]?.name || 'N/A'}</p>
+                                <p class="text-sm text-gray-600">Asignado a: ${assignedTo}</p>
+                            </div>
+                            <div class="flex gap-2">
+                               <button onclick="showDetailsModal('${task.id}')" class="text-sm bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md">Ver</button>
+                               <button onclick="openReassignModal('${task.id}')" class="text-sm bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-1 px-3 rounded-md">Reasignar</button>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            };
+            const renderPartRequests = (requests) => {
+                const filterValue = partRequestFilter.value;
+                const filtered = filterValue === 'all' ? requests : requests.filter(r => r.status === filterValue);
+                partRequestsContainer.innerHTML = filtered.length === 0 ? `<p class="text-gray-500 text-center">No hay solicitudes.</p>` : filtered.map(req => {
+                    const statusColors = { 'Solicitado': 'bg-yellow-400', 'Procesando': 'bg-blue-400', 'Pagado': 'bg-purple-400', 'Recibido': 'bg-green-400', 'Entregado': 'bg-gray-500' };
+                    return `<div class="p-3 bg-gray-50 rounded-lg border">
+                        <p class="font-semibold text-gray-800">${req.part_description}</p>
+                        <p class="text-sm text-gray-600">Por: ${employeesMap[req.requesting_employee_id]?.name || 'N/A'} para ${processesMap[req.activity_log_process_id]?.name || 'N/A'}</p>
+                        <div class="flex items-center justify-between mt-2">
+                            <span class="text-xs font-medium px-2 py-0.5 rounded text-white ${statusColors[req.status] || 'bg-gray-400'}">${req.status}</span>
+                            <select onchange="updateRequestStatus(this, '${req.id}')" class="text-xs border-gray-300 rounded-md shadow-sm bg-white">
+                                <option value="">Cambiar...</option>
+                                <option value="Solicitado">Solicitado</option><option value="Procesando">Procesando</option><option value="Pagado">Pagado</option>
+                                <option value="Recibido">Recibido</option><option value="Entregado">Entregado</option>
+                            </select>
+                        </div>
+                    </div>`;
+                }).join('');
+            };
+
+            window.updateRequestStatus = async (selectElement, reqId) => {
+                const newStatus = selectElement.value;
+                if (!newStatus) return;
+                try {
+                    await partRequestsCol.doc(reqId).update({ status: newStatus, updated_at: firebase.firestore.FieldValue.serverTimestamp() });
+                } catch (err) { console.error("Error updating status:", err); }
+            };
+
+            const populateReassignDropdown = () => {
+                 employeeReassignSelect.innerHTML = `<option value="pool">Mover a la Piscina de Tareas</option>`;
+                 Object.keys(employeesMap).filter(id => employeesMap[id].is_active).forEach(id => {
+                    employeeReassignSelect.innerHTML += `<option value="${id}">${employeesMap[id].name}</option>`;
+                });
+            };
+
+            window.openReassignModal = (logId) => {
+                currentReassigningLogId = logId;
+                toggleModal('reassign-modal', true);
+            };
+            
+            chartFilterButtons.addEventListener('click', (e) => {
+                 if (e.target.tagName !== 'BUTTON') return;
+                chartFilterButtons.querySelectorAll('button').forEach(btn => {
+                    btn.classList.remove('bg-cyan-600', 'text-white');
+                    btn.classList.add('bg-gray-200', 'text-gray-700');
+                });
+                e.target.classList.add('bg-cyan-600', 'text-white');
+                e.target.classList.remove('bg-gray-200', 'text-gray-700');
+                const range = e.target.dataset.range;
+                const today = new Date();
+                let start = new Date(today);
+                if (range === 'day') start.setHours(0,0,0,0);
+                else if (range === 'week') { start.setDate(start.getDate() - start.getDay() + (start.getDay() === 0 ? -6 : 1)); start.setHours(0,0,0,0); }
+                else if (range === 'month') { start.setDate(1); start.setHours(0,0,0,0); }
+                else if (range === 'year') start = new Date(today.getFullYear(), 0, 1);
+                fetchAndRenderDataForRange(start, new Date());
+            });
+
+            partRequestFilter.addEventListener('change', listenForPartRequests);
+
+            document.getElementById('reassign-confirm-btn').onclick = async () => {
+                if (!currentReassigningLogId) return;
+                const selectedValue = employeeReassignSelect.value;
+                let updateData = selectedValue === 'pool' 
+                    ? { assignment_type: 'pool', assigned_employee_id: null }
+                    : { assignment_type: 'user', assigned_employee_id: selectedValue };
+                try {
+                    await activityLogsCol.doc(currentReassigningLogId).update(updateData);
+                    toggleModal('reassign-modal', false);
+                } catch (err) { console.error("Error reassigning task:", err); }
+            };
+
+            init();
+        });
+    </script>
+</body>
+</html>
