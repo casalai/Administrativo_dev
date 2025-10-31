@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .modal-backdrop { background-color: rgba(0, 0, 0, 0.75); }
@@ -61,6 +62,19 @@
                 <div id="part-requests-container" class="space-y-3 max-h-96 overflow-y-auto"></div>
             </div>
         </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+                <h2 class="text-2xl font-semibold text-gray-700">Línea del tiempo (en vivo)</h2>
+                <div class="flex items-center gap-2 text-sm">
+                    <span class="text-gray-600">Ventana:</span>
+                    <button data-window="120" class="timeline-window-btn bg-cyan-600 text-white font-semibold py-1 px-3 rounded-md">2h</button>
+                    <button data-window="480" class="timeline-window-btn bg-gray-200 hover:bg-cyan-600 hover:text-white text-gray-700 font-semibold py-1 px-3 rounded-md">8h</button>
+                </div>
+            </div>
+            <p class="text-gray-500 text-sm mb-3">Gráfico tipo "osciloscopio" por empleado: 1 = activo, 0 = inactivo. Se actualiza automáticamente.</p>
+            <div id="employee-timeline-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+        </div>
         
         <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
             <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
@@ -75,6 +89,35 @@
             <div>
                 <canvas id="employee-chart"></canvas>
             </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                <h2 class="text-2xl font-semibold text-gray-700">Resumen por empleado (rango seleccionado)</h2>
+                <label class="text-sm text-gray-700 flex items-center gap-2">
+                    <input type="checkbox" id="toggle-admin-points" class="h-4 w-4">
+                    Admin: mostrar puntos
+                </label>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-gray-500">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3">Empleado</th>
+                            <th class="px-6 py-3">Eventos</th>
+                            <th class="px-6 py-3 admin-col-points hidden">Puntos</th>
+                        </tr>
+                    </thead>
+                    <tbody id="employee-summary-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="top-ranking-section" class="bg-white p-6 rounded-xl shadow-lg mb-8 hidden">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                <h2 class="text-2xl font-semibold text-gray-700">Top 5 empleados por puntos (rango)</h2>
+            </div>
+            <div id="top-ranking-body" class="space-y-2"></div>
         </div>
 
         <div class="bg-white p-6 rounded-xl shadow-lg">
@@ -123,24 +166,50 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script>
+        let db;
+        let dashboardReady = false;
+
         const firebaseConfig = {
             apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
             authDomain: "sistema-productividad-equipo.firebaseapp.com",
             projectId: "sistema-productividad-equipo",
             storageBucket: "sistema-productividad-equipo.appspot.com",
             messagingSenderId: "196802708765",
-            appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+            appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4"
         };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const employeesCol = db.collection('employees');
-        const processesCol = db.collection('processes');
-        const subprocessesCol = db.collection('subprocesses');
-        const activityLogsCol = db.collection('activity_logs');
-        const partRequestsCol = db.collection('part_requests');
 
-        document.addEventListener('DOMContentLoaded', () => {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        db = firebase.firestore();
+
+        function bootDashboard() {
+            if (dashboardReady) return;
+            dashboardReady = true;
+            initializeDashboard();
+        }
+
+        firebase.auth().onAuthStateChanged(user => {
+            if (user) {
+                bootDashboard();
+            } else {
+                firebase.auth().signInAnonymously().catch(error => {
+                    console.error('Error de autenticación en dashboard:', error);
+                    const loadingText = document.getElementById('loading-text');
+                    if (loadingText) loadingText.textContent = 'Error de autenticación.';
+                });
+            }
+        });
+
+        function initializeDashboard() {
+            const employeesCol = db.collection('employees');
+            const processesCol = db.collection('processes');
+            const subprocessesCol = db.collection('subprocesses');
+            const activityLogsCol = db.collection('activity_logs');
+            const partRequestsCol = db.collection('part_requests');
+
             // --- Referencias DOM ---
             const loadingOverlay = document.getElementById('loading-overlay');
             const loadingText = document.getElementById('loading-text');
@@ -149,10 +218,16 @@
             const realTimeContainer = document.getElementById('real-time-activity-container');
             const chartCanvas = document.getElementById('employee-chart');
             const chartFilterButtons = document.getElementById('chart-filter-buttons');
+            const employeeSummaryBody = document.getElementById('employee-summary-body');
+            const toggleAdminPoints = document.getElementById('toggle-admin-points');
+            const topRankingSection = document.getElementById('top-ranking-section');
+            const topRankingBody = document.getElementById('top-ranking-body');
             const pausedTasksContainer = document.getElementById('paused-tasks-container');
             const partRequestsContainer = document.getElementById('part-requests-container');
             const partRequestFilter = document.getElementById('part-request-filter');
             const employeeReassignSelect = document.getElementById('employee-reassign-select');
+            const employeeTimelineContainer = document.getElementById('employee-timeline-container');
+            const timelineWindowButtons = document.querySelectorAll('.timeline-window-btn');
             
             // --- Estado Global ---
             let employeesMap = {};
@@ -162,6 +237,11 @@
             let activeTimersInterval = null;
             let currentReassigningLogId = null;
             let completedLogsCache = [];
+            let showPointsAdmin = localStorage.getItem('dashboardShowPoints') === '1';
+            let timelineUpdateInterval = null;
+            let timelineWindowMinutes = 120; // default 2h
+            const employeeActivityState = {}; // employeeId -> boolean (active)
+            const employeeTimelineCharts = {}; // employeeId -> { chart, data: [] }
 
             const toggleLoading = (show, text = 'Cargando...') => {
                 loadingText.textContent = text;
@@ -193,6 +273,7 @@
                     listenForActiveTasks();
                     listenForPausedTasks();
                     listenForPartRequests();
+                    initEmployeeTimelines();
                     
                     chartFilterButtons.querySelector('[data-range="week"]').click(); // Carga inicial de datos
                 } catch (error) {
@@ -217,6 +298,8 @@
                     renderKPIs(completedLogsCache);
                     renderActivityTable(completedLogsCache);
                     renderEmployeeChart(completedLogsCache);
+                    renderEmployeeSummary(completedLogsCache);
+                    renderTopRanking(completedLogsCache);
 
                 } catch (error) {
                     console.error("Error fetching logs:", error);
@@ -228,11 +311,16 @@
                 const totalHours = logs.reduce((acc, log) => acc + (log.total_duration_seconds || 0), 0) / 3600;
                 const totalProcesses = logs.length;
                 const activeEmployees = new Set(logs.map(log => log.employee_id)).size;
-                kpiContainer.innerHTML = `
+                const totalPoints = logs.reduce((acc, log) => acc + (typeof log.points_awarded === 'number' ? log.points_awarded : 0), 0);
+                let html = `
                     <div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Horas Registradas</h3><p class="text-3xl font-bold text-gray-800 mt-2">${totalHours.toFixed(2)}</p></div>
                     <div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Procesos Completados</h3><p class="text-3xl font-bold text-gray-800 mt-2">${totalProcesses}</p></div>
                     <div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Empleados Activos</h3><p class="text-3xl font-bold text-gray-800 mt-2">${activeEmployees}</p></div>
                     <div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Tiempo Promedio / Proceso</h3><p class="text-3xl font-bold text-gray-800 mt-2">${totalProcesses > 0 ? (totalHours * 60 / totalProcesses).toFixed(1) : 0} min</p></div>`;
+                if (showPointsAdmin){
+                    html += `<div class="kpi-card bg-white p-6 rounded-xl shadow-lg"><h3 class="text-gray-500 text-sm font-medium">Puntos del período</h3><p class="text-3xl font-bold text-gray-800 mt-2">${totalPoints.toFixed(0)}</p></div>`;
+                }
+                kpiContainer.innerHTML = html;
             };
             
             const renderActivityTable = (logs) => {
@@ -301,6 +389,11 @@
             const listenForActiveTasks = () => {
                  activityLogsCol.where('status', '==', 'active').onSnapshot(snapshot => {
                     const activeTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    // Actualizar estado por empleado
+                    const nowActive = new Set(activeTasks.map(t => t.assigned_employee_id || t.employee_id).filter(Boolean));
+                    Object.keys(employeesMap).forEach(empId => {
+                        employeeActivityState[empId] = nowActive.has(empId);
+                    });
                     renderActiveTasks(activeTasks);
                 }, err => console.error("Error fetching active tasks:", err));
             };
@@ -365,6 +458,148 @@
                     const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     renderPartRequests(requests);
                 }, err => console.error("Error fetching part requests:", err));
+            };
+
+            const renderEmployeeSummary = (logs) => {
+                const byEmp = {};
+                logs.forEach(log => {
+                    const empId = log.employee_id;
+                    if (!byEmp[empId]) byEmp[empId] = { events: 0, points: 0 };
+                    byEmp[empId].events += 1;
+                    if (typeof log.points_awarded === 'number') byEmp[empId].points += log.points_awarded;
+                });
+                const rows = Object.keys(byEmp)
+                    .sort((a,b) => (employeesMap[a]?.name||'').localeCompare(employeesMap[b]?.name||''))
+                    .map(empId => {
+                        const empName = employeesMap[empId]?.name || 'Desconocido';
+                        const { events, points } = byEmp[empId];
+                        return `<tr class="bg-white border-b hover:bg-gray-50">
+                            <td class="px-6 py-3 font-medium text-gray-900">${empName}</td>
+                            <td class="px-6 py-3">${events}</td>
+                            <td class="px-6 py-3 admin-col-points ${showPointsAdmin ? '' : 'hidden'}">${points.toFixed(0)}</td>
+                        </tr>`;
+                    });
+                employeeSummaryBody.innerHTML = rows.length ? rows.join('') : `<tr><td colspan="3" class="px-6 py-6 text-center text-gray-500">Sin datos en el rango.</td></tr>`;
+                // toggle header points column visibility
+                document.querySelectorAll('.admin-col-points').forEach(el => el.classList.toggle('hidden', !showPointsAdmin));
+                toggleAdminPoints.checked = showPointsAdmin;
+            };
+
+            const renderTopRanking = (logs) => {
+                if (!showPointsAdmin){ topRankingSection.classList.add('hidden'); return; }
+                const byEmp = {};
+                logs.forEach(log => {
+                    const empId = log.employee_id;
+                    const pts = typeof log.points_awarded === 'number' ? log.points_awarded : 0;
+                    if (!byEmp[empId]) byEmp[empId] = 0;
+                    byEmp[empId] += pts;
+                });
+                const ranking = Object.keys(byEmp)
+                    .map(id => ({ id, name: employeesMap[id]?.name || 'Desconocido', points: byEmp[id] }))
+                    .sort((a,b) => b.points - a.points)
+                    .slice(0,5);
+                if (!ranking.length){
+                    topRankingBody.innerHTML = `<span class="text-gray-500 text-sm">Sin puntos registrados en el rango.</span>`;
+                } else {
+                    topRankingBody.innerHTML = ranking.map((r, idx) => `
+                        <div class="flex items-center justify-between p-2 bg-gray-50 border rounded">
+                            <div class="flex items-center gap-3">
+                                <span class="w-6 text-center text-sm font-bold ${idx===0?'text-amber-600':''}">${idx+1}</span>
+                                <span class="font-medium text-gray-800">${r.name}</span>
+                            </div>
+                            <span class="text-sm font-semibold text-gray-700">${r.points.toFixed(0)} pts</span>
+                        </div>
+                    `).join('');
+                }
+                topRankingSection.classList.remove('hidden');
+            };
+
+            // --- Línea del tiempo por empleado (en vivo) ---
+            const initEmployeeTimelines = () => {
+                // Construir tarjetas y charts para empleados activos
+                employeeTimelineContainer.innerHTML = '';
+                Object.keys(employeesMap)
+                    .filter(id => employeesMap[id].is_active)
+                    .sort((a,b) => (employeesMap[a].name||'').localeCompare(employeesMap[b].name||''))
+                    .forEach(empId => {
+                        const card = document.createElement('div');
+                        card.className = 'p-4 bg-white rounded-lg border shadow-sm';
+                        card.innerHTML = `
+                            <div class="flex items-center justify-between mb-2">
+                                <div>
+                                    <p class="font-semibold text-gray-800 truncate">${employeesMap[empId].name || 'Empleado'}</p>
+                                    <p class="text-xs text-gray-500">Eventos hoy: <span data-emp="${empId}" class="emp-events-count">0</span></p>
+                                </div>
+                                <span class="text-xs font-medium px-2 py-0.5 rounded" data-emp-status="${empId}">-</span>
+                            </div>
+                            <canvas id="timeline-${empId}" height="60"></canvas>
+                        `;
+                        employeeTimelineContainer.appendChild(card);
+
+                        const ctx = card.querySelector('canvas').getContext('2d');
+                        const data = [];
+                        const chart = new Chart(ctx, {
+                            type: 'line',
+                            data: { datasets: [{
+                                label: 'Actividad',
+                                data,
+                                borderColor: 'rgba(22,163,175,1)',
+                                backgroundColor: 'rgba(22,163,175,0.05)',
+                                fill: true,
+                                stepped: true,
+                                pointRadius: 0,
+                                borderWidth: 2,
+                                tension: 0
+                            }]},
+                            options: {
+                                animation: false,
+                                responsive: true,
+                                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                                scales: {
+                                    x: { type: 'time', time: { unit: 'minute' }, grid: { display: false } },
+                                    y: { min: 0, max: 1, ticks: { stepSize: 1, callback: (v)=> v ? '1' : '0' }, grid: { display: false } }
+                                }
+                            }
+                        });
+                        employeeTimelineCharts[empId] = { chart, data };
+                    });
+
+                if (timelineUpdateInterval) clearInterval(timelineUpdateInterval);
+                timelineUpdateInterval = setInterval(pushTimelineSnapshot, 30000); // cada 30s
+                pushTimelineSnapshot();
+                updateEmployeesEventCountsForToday();
+            };
+
+            const pushTimelineSnapshot = () => {
+                const now = Date.now();
+                const windowMs = timelineWindowMinutes * 60 * 1000;
+                Object.keys(employeeTimelineCharts).forEach(empId => {
+                    const { chart, data } = employeeTimelineCharts[empId];
+                    const active = !!employeeActivityState[empId];
+                    // actualizar badge estado
+                    const badge = document.querySelector(`[data-emp-status="${empId}"]`);
+                    if (badge){
+                        badge.textContent = active ? 'Activo' : 'Inactivo';
+                        badge.className = `text-xs font-medium px-2 py-0.5 rounded ${active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`;
+                    }
+                    data.push({ x: now, y: active ? 1 : 0 });
+                    // recortar a ventana
+                    while (data.length && now - data[0].x > windowMs) data.shift();
+                    chart.update('none');
+                });
+            };
+
+            const updateEmployeesEventCountsForToday = async () => {
+                try{
+                    const start = new Date(); start.setHours(0,0,0,0);
+                    const snap = await activityLogsCol.where('status','==','completed').where('end_time','>=', start).get();
+                    const byEmp = {};
+                    snap.docs.forEach(d => { const emp = d.data().employee_id; byEmp[emp] = (byEmp[emp]||0) + 1; });
+                    document.querySelectorAll('.emp-events-count').forEach(el => {
+                        const empId = el.getAttribute('data-emp');
+                        el.textContent = byEmp[empId] || 0;
+                    });
+                }catch(e){ console.warn('No se pudo cargar conteo de eventos de hoy', e); }
             };
             const renderPausedTasks = (tasks) => {
                 pausedTasksContainer.innerHTML = tasks.length === 0 ? `<p class="text-gray-500 text-center">No hay procesos en pausa.</p>` : tasks.map(task => {
@@ -441,6 +676,25 @@
                 fetchAndRenderDataForRange(start, new Date());
             });
 
+            // Toggle admin points visibility
+            toggleAdminPoints.addEventListener('change', () => {
+                showPointsAdmin = !!toggleAdminPoints.checked;
+                localStorage.setItem('dashboardShowPoints', showPointsAdmin ? '1' : '0');
+                renderEmployeeSummary(completedLogsCache);
+                renderKPIs(completedLogsCache);
+                renderTopRanking(completedLogsCache);
+            });
+
+            // Cambiar ventana de timeline
+            timelineWindowButtons.forEach(btn => btn.addEventListener('click', (e)=>{
+                timelineWindowButtons.forEach(b => { b.classList.remove('bg-cyan-600','text-white'); b.classList.add('bg-gray-200','text-gray-700'); });
+                e.currentTarget.classList.add('bg-cyan-600','text-white');
+                e.currentTarget.classList.remove('bg-gray-200','text-gray-700');
+                timelineWindowMinutes = parseInt(e.currentTarget.dataset.window) || 120;
+                // Forzar recorte y redraw
+                pushTimelineSnapshot();
+            }));
+
             partRequestFilter.addEventListener('change', listenForPartRequests);
 
             document.getElementById('reassign-confirm-btn').onclick = async () => {
@@ -456,7 +710,7 @@
             };
 
             init();
-        });
+        }
     </script>
 </body>
 </html>

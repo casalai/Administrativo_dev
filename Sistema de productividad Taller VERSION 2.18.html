@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Sistema de Productividad Taller</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -14,7 +15,7 @@
         .quantity-input { width: 70px; text-align: center; }
         input[type='number']::-webkit-inner-spin-button,
         input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        input[type='number'] { -moz-appearance: textfield; }
+    input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
         
         .finish-blocked {
             background-color: #a0aec0 !important; /* gray-400 */
@@ -50,8 +51,9 @@
     <div class="container mx-auto max-w-xl">
         <div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
             <div class="w-full">
-                <h1 class="text-3xl font-bold text-center text-gray-800 mb-8">¿Quién eres?</h1>
-                <div id="employee-list" class="space-y-3"></div>
+                <h1 class="text-2xl font-bold text-center text-gray-800 mb-2">Inicia sesión desde el panel principal</h1>
+                <p class="text-center text-gray-500 mb-6">Este módulo asigna al técnico automáticamente según la sesión activa.</p>
+                <div id="employee-list" class="space-y-3 hidden"></div>
             </div>
         </div>
         <div id="main-screen" class="hidden">
@@ -69,6 +71,20 @@
             <div class="flex justify-end gap-4 mt-6">
                 <button onclick="toggleModal('part-request-modal', false)" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg btn-primary">Cancelar</button>
                 <button id="request-confirm-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg btn-primary">Enviar</button>
+            </div>
+        </div>
+    </div>
+    <div id="help-request-modal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Solicitar Ayuda</h2>
+            <p id="help-request-context" class="text-gray-600 mb-4"></p>
+            <textarea id="help-description" class="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-cyan-500" rows="4" placeholder="Describe brevemente en qué necesitas ayuda..."></textarea>
+            <input type="hidden" id="help-scope">
+            <input type="hidden" id="help-scope-id">
+            <input type="hidden" id="help-field-label">
+            <div class="flex justify-end gap-4 mt-6">
+                <button onclick="toggleModal('help-request-modal', false)" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg btn-primary">Cancelar</button>
+                <button id="help-request-confirm-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg btn-primary">Enviar</button>
             </div>
         </div>
     </div>
@@ -98,6 +114,30 @@
             </div>
         </div>
     </div>
+    <!-- Modal Visor de Ayuda -->
+    <div id="help-viewer-modal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop" data-show-drafts="false">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 p-0 flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h2 id="help-viewer-title" class="text-2xl font-bold text-gray-800">Ayuda</h2>
+                <div class="flex items-center gap-2">
+                    <button id="help-viewer-toggle-draft" class="hidden text-sm font-semibold px-3 py-1.5 rounded bg-yellow-100 text-yellow-800 hover:bg-yellow-200">Ver borrador</button>
+                    <button onclick="toggleModal('help-viewer-modal', false)" class="text-2xl text-gray-400 hover:text-gray-600">&times;</button>
+                </div>
+            </div>
+            <div id="help-viewer-body" class="p-4 overflow-y-auto">
+                <div id="help-viewer-content" class="prose max-w-none"></div>
+                <div id="help-viewer-attachments" class="mt-4 grid grid-cols-1 gap-3"></div>
+            </div>
+            <div class="p-3 bg-gray-50 border-t flex justify-end">
+                <button onclick="toggleModal('help-viewer-modal', false)" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg btn-primary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    <!-- Lightbox para imagen/video -->
+    <div id="media-lightbox" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80">
+        <button id="media-lightbox-close" class="absolute top-4 right-4 text-white text-3xl">&times;</button>
+        <div id="media-lightbox-content" class="max-w-5xl w-[92vw] max-h-[88vh] flex items-center justify-center"></div>
+    </div>
     <div id="cancel-task-modal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
             <h2 class="text-2xl font-bold text-gray-800 mb-4">Anular Proceso</h2>
@@ -114,6 +154,8 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
     
     <script>
         const firebaseConfig = {
@@ -125,13 +167,16 @@
             appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
         };
         firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
+    const db = firebase.firestore();
+    const storage = firebase.storage();
 
         const employeesCol = db.collection('employees');
         const processesCol = db.collection('processes');
         const subprocessesCol = db.collection('subprocesses');
-        const activityLogsCol = db.collection('activity_logs');
-        const partRequestsCol = db.collection('part_requests');
+    const activityLogsCol = db.collection('activity_logs');
+    const partRequestsCol = db.collection('part_requests');
+    const helpRequestsCol = db.collection('help_requests');
+    const sysParamsDoc = db.collection('system_params').doc('global');
 
         document.addEventListener('DOMContentLoaded', () => {
             let currentUser = null;
@@ -147,6 +192,9 @@
             let unsubscribePoolTasks = null;
             let unsubscribeMyPausedRequests = null;
             let unsubscribePoolRequests = null;
+            let helpShowDraftsGlobal = (localStorage.getItem('helpShowDrafts') === '1');
+            let currentTabName = 'control';
+            let systemParams = { weight_effort: 4, weight_difficulty: 4, weight_intellect: 4, time_points_factor: 1 };
 
             const loadingOverlay = document.getElementById('loading-overlay');
             const loadingText = document.getElementById('loading-text');
@@ -179,10 +227,11 @@
             const init = async () => {
                 try {
                     toggleLoading(true, 'Cargando datos maestros...');
-                    const [allEmployeesSnap, processesSnap, subprocessesSnap] = await Promise.all([
+                    const [allEmployeesSnap, processesSnap, subprocessesSnap, sysParamsSnap] = await Promise.all([
                         employeesCol.get(),
                         processesCol.get(),
-                        subprocessesCol.get()
+                        subprocessesCol.get(),
+                        sysParamsDoc.get()
                     ]);
 
                     const allEmployees = allEmployeesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -192,6 +241,9 @@
                     
                     masterProcesses = processesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     masterSubprocesses = subprocessesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    if (sysParamsSnap.exists){
+                        systemParams = { ...systemParams, ...sysParamsSnap.data() };
+                    }
                     renderLoginScreen(activeEmployees);
                 } catch (error) {
                     console.error("Error en la inicialización:", error);
@@ -212,6 +264,14 @@
                  document.querySelectorAll('.employee-btn').forEach(btn => {
                     btn.onclick = () => login(employees.find(e => e.id === btn.dataset.employeeId));
                 });
+                // Si el host ya indicó un usuario (pendiente), iniciar sesión automáticamente
+                if (window.__pendingHostAppUserId) {
+                    const pendingBtn = employeeListDiv.querySelector(`[data-employee-id="${window.__pendingHostAppUserId}"]`);
+                    if (pendingBtn) {
+                        pendingBtn.click();
+                        window.__pendingHostAppUserId = null;
+                    }
+                }
             };
 
             const login = async (employeeData) => {
@@ -260,9 +320,30 @@
             const renderHeader = () => {
                 mainHeader.innerHTML = `
                     <h2 class="font-bold text-xl text-gray-800">Hola, ${currentUser.name.split(' ')[0]}</h2>
-                    <button id="logout-btn" class="bg-red-100 hover:bg-red-200 text-red-700 font-semibold py-2 px-4 rounded-lg text-sm btn-primary">Salir</button>
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center gap-2 text-sm text-gray-700">
+                            <input type="checkbox" id="toggle-drafts-global" class="h-4 w-4" ${helpShowDraftsGlobal ? 'checked' : ''}>
+                            Ver borradores
+                        </label>
+                        <button id="logout-btn" class="bg-red-100 hover:bg-red-200 text-red-700 font-semibold py-2 px-4 rounded-lg text-sm btn-primary">Salir</button>
+                    </div>
                 `;
                 document.getElementById('logout-btn').onclick = logout;
+                const toggle = document.getElementById('toggle-drafts-global');
+                if (toggle){
+                    toggle.onchange = (e) => {
+                        helpShowDraftsGlobal = !!e.target.checked;
+                        localStorage.setItem('helpShowDrafts', helpShowDraftsGlobal ? '1' : '0');
+                        // Re-render vistas que puedan contener botones de ayuda
+                        if (activeLogId){
+                            renderTimerView();
+                        } else {
+                            // Si no hay tarea activa, mantener la vista principal y pestaña actual
+                            renderMainTabView();
+                            switchTab(currentTabName);
+                        }
+                    };
+                }
             };
 
             const renderMainTabView = () => {
@@ -281,7 +362,8 @@
                 switchTab('control');
             };
 
-            const switchTab = (tabName) => {
+          const switchTab = (tabName) => {
+              currentTabName = tabName;
                  document.querySelectorAll('.tab-btn').forEach(btn => {
                     btn.classList.toggle('border-cyan-600', btn.dataset.tab === tabName);
                     btn.classList.toggle('text-cyan-600', btn.dataset.tab === tabName);
@@ -609,7 +691,22 @@
                     for (const field of process.custom_fields) {
                         if (field.required) {
                             const input = document.querySelector(`[data-prefix="main"][data-label="${field.label}"]`);
-                            if (!input || input.value.trim() === '') {
+                            if (!input) { allRequiredFieldsFilled = false; break; }
+                            if (input.type === 'hidden' && input.id.endsWith('-data')){
+                                const arr = input.value ? JSON.parse(decodeURIComponent(input.value)) : [];
+                                if (!arr.length){ allRequiredFieldsFilled = false; break; }
+                                // Validación de metadatos requeridos para tipo media
+                                if (field.type === 'media'){
+                                    if (field.metaRequiredTitle) {
+                                        const allHaveTitle = arr.every(a => (a.title && String(a.title).trim().length > 0));
+                                        if (!allHaveTitle){ allRequiredFieldsFilled = false; break; }
+                                    }
+                                    if (field.metaRequiredDescription) {
+                                        const allHaveDesc = arr.every(a => (a.description && String(a.description).trim().length > 0));
+                                        if (!allHaveDesc){ allRequiredFieldsFilled = false; break; }
+                                    }
+                                }
+                            } else if ((input.tagName === 'SELECT' && input.value === '') || (typeof input.value === 'string' && input.value.trim() === '')) {
                                 allRequiredFieldsFilled = false;
                                 break;
                             }
@@ -625,7 +722,21 @@
                             for (const field of sub.custom_fields) {
                                 if (field.required) {
                                     const input = document.querySelector(`[data-prefix="sub-${sub.id}"][data-label="${field.label}"]`);
-                                    if (!input || input.value.trim() === '') {
+                                    if (!input) { allRequiredFieldsFilled = false; break; }
+                                    if (input.type === 'hidden' && input.id.endsWith('-data')){
+                                        const arr = input.value ? JSON.parse(decodeURIComponent(input.value)) : [];
+                                        if (!arr.length){ allRequiredFieldsFilled = false; break; }
+                                        if (field.type === 'media'){
+                                            if (field.metaRequiredTitle) {
+                                                const allHaveTitle = arr.every(a => (a.title && String(a.title).trim().length > 0));
+                                                if (!allHaveTitle){ allRequiredFieldsFilled = false; break; }
+                                            }
+                                            if (field.metaRequiredDescription) {
+                                                const allHaveDesc = arr.every(a => (a.description && String(a.description).trim().length > 0));
+                                                if (!allHaveDesc){ allRequiredFieldsFilled = false; break; }
+                                            }
+                                        }
+                                    } else if ((input.tagName === 'SELECT' && input.value === '') || (typeof input.value === 'string' && input.value.trim() === '')) {
                                         allRequiredFieldsFilled = false;
                                         break;
                                     }
@@ -646,17 +757,20 @@
                 const savedState = activeLogData.current_state || {};
                 mainHeader.classList.add('hidden');
                 
-                let fieldsHtml = (process.custom_fields && process.custom_fields.length > 0) ? `<div class="p-4 border-b"><h3 class="font-semibold text-lg mb-3">Datos del Proceso</h3>${renderCustomFields(process.custom_fields, savedState.custom_data || {}, 'main')}</div>` : '';
+                let fieldsHtml = (process.custom_fields && process.custom_fields.length > 0) ? `<div class=\"p-4 border-b\"><div class=\"flex items-center justify-between\"><h3 class=\"font-semibold text-lg\">Datos del Proceso</h3></div><div class=\"mt-3\">${renderCustomFields(process.custom_fields, savedState.custom_data || {}, 'main')}</div></div>` : '';
                 let checklistHtml = (process.is_composite && process.checklist && process.checklist.length > 0) ? `<div class="p-4"><h3 class="font-semibold text-lg mb-3">Checklist de Subprocesos</h3><div class="space-y-3">${process.checklist.map(subId => {
                     const sub = masterSubprocesses.find(s => s.id === subId);
                     if (!sub) return '';
                     const savedSubState = (savedState.completed_subprocesses || []).find(s => s.subprocess_id === subId) || {};
                     const isChecked = !!savedSubState.subprocess_id;
-                    return `<div class="bg-gray-50 p-3 rounded-lg border">
-                        <label class="flex items-center justify-between cursor-pointer">
-                            <span class="font-medium text-gray-800">${sub.name}</span>
+                    return `<div class=\"bg-gray-50 p-3 rounded-lg border\">
+                        <label class=\"flex items-center justify-between cursor-pointer\">
+                            <span class=\"font-medium text-gray-800\">${sub.name}</span>
                             <input type="checkbox" data-sub-id="${sub.id}" class="h-5 w-5 rounded text-cyan-600 focus:ring-cyan-500" ${isChecked ? 'checked' : ''}>
                         </label>
+                        ${(sub.help && (sub.help.published === true || helpShowDraftsGlobal)) 
+                            ? `<div class=\"mt-2\"><button class=\"help-view-btn text-cyan-700 hover:text-cyan-900 text-sm font-semibold\" data-scope=\"subprocess\" data-id=\"${sub.id}\"><i class=\"fa fa-circle-question\"></i> Ayuda</button></div>`
+                            : `<div class=\"mt-2\"><button class=\"help-request-btn text-yellow-700 hover:text-yellow-900 text-sm font-semibold\" data-scope=\"subprocess\" data-id=\"${sub.id}\" data-name=\"${sub.name.replace(/\\/g, '\\\\').replace(/\"/g,'&quot;')}\"><i class=\"fa fa-life-ring\"></i> Solicitar ayuda</button></div>`}
                         ${sub.measurement_type === 'Cantidad' ? `<div class="mt-2 flex items-center gap-2"><label class="text-sm">Cantidad:</label><input type="number" value="${savedSubState.quantity || 1}" class="quantity-input border-gray-300 rounded-md p-1 w-20"></div>` : ''}
                         <div id="sub-fields-${sub.id}" class="mt-3 pt-3 border-t ${!isChecked ? 'hidden' : ''}">${renderCustomFields(sub.custom_fields || [], savedSubState.custom_data || {}, `sub-${sub.id}`)}</div>
                     </div>`;
@@ -665,7 +779,17 @@
                 const formContentId = "timer-form-content";
                 appContent.innerHTML = `
                     <div class="bg-white rounded-xl shadow-md">
-                        <div class="p-4 border-b"><div class="flex justify-between items-center"><h2 class="text-xl font-bold text-gray-800">${process.name}</h2><div id="timer" class="text-2xl font-mono font-semibold bg-gray-100 px-3 py-1 rounded-lg">00:00:00</div></div></div>
+                        <div class="p-4 border-b">
+                            <div class="flex justify-between items-center">
+                                <div class="flex items-center gap-3">
+                                    <h2 class="text-xl font-bold text-gray-800">${process.name}</h2>
+                                    ${(process.help && (process.help.published === true || helpShowDraftsGlobal)) 
+                                        ? `<button class=\"help-view-btn text-cyan-700 hover:text-cyan-900 text-sm font-semibold\" data-scope=\"process\" data-id=\"${process.id}\"><i class=\"fa fa-circle-question\"></i> Ayuda</button>`
+                                        : `<button class=\"help-request-btn text-yellow-700 hover:text-yellow-900 text-sm font-semibold\" data-scope=\"process\" data-id=\"${process.id}\" data-name=\"${process.name.replace(/\\/g, '\\\\').replace(/"/g,'&quot;')}\"><i class=\"fa fa-life-ring\"></i> Solicitar ayuda</button>`}
+                                </div>
+                                <div id="timer" class="text-2xl font-mono font-semibold bg-gray-100 px-3 py-1 rounded-lg">00:00:00</div>
+                            </div>
+                        </div>
                         <div id="${formContentId}" class="max-h-[calc(100vh-220px)] overflow-y-auto">
                             ${fieldsHtml}
                             <div id="timer-requests-section"></div>
@@ -674,6 +798,7 @@
                         <div class="p-3 bg-gray-50 grid grid-cols-2 gap-2 rounded-b-xl">
                             <button id="pause-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-lg btn-primary">Pausar</button>
                             <button onclick="toggleModal('part-request-modal', true)" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-lg btn-primary">Repuesto</button>
+                            <button id="help-request-open-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-lg btn-primary">Ayuda</button>
                             <button id="cancel-task-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg btn-primary">Anular</button>
                             <button id="finish-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg btn-primary">Finalizar</button>
                         </div>
@@ -697,8 +822,14 @@
                 };
                 document.getElementById('finish-btn').onclick = finishProcess;
 
+                // Botón de ayuda general (abre modal sin contexto específico más allá del proceso activo)
+                const helpOpenBtn = document.getElementById('help-request-open-btn');
+                if (helpOpenBtn){ helpOpenBtn.onclick = () => openHelpRequest('process', process.id); }
+
                 listenForPartRequestsInTimer();
                 checkFormValidity();
+                attachHelpViewers();
+                attachHelpRequesters();
             };
 
             const listenForPartRequestsInTimer = () => {
@@ -741,16 +872,396 @@
                     const fieldId = `${prefix}-field-${index}`;
                     const value = data[field.label] ?? '';
                     const required = field.required ? 'required' : '';
-                    let fieldHtml = `<div class="mb-3"><label for="${fieldId}" class="block text-sm font-medium text-gray-700">${field.label} ${field.required ? '<span class="text-red-500">*</span>' : ''}</label>`;
+                    const helpBtn = (field.help && (field.help.published === true || helpShowDraftsGlobal)) 
+                        ? `<button type=\"button\" class=\"help-view-btn text-cyan-700 hover:text-cyan-900 text-xs font-semibold ml-2\" data-help=\"${encodeURIComponent(JSON.stringify(field.help))}\"><i class=\"fa fa-circle-question\"></i> Ayuda</button>` 
+                        : `<button type=\"button\" class=\"help-request-btn text-yellow-700 hover:text-yellow-900 text-[11px] font-semibold ml-2\" data-scope=\"field\" data-id=\"${fieldId}\" data-field-label=\"${String(field.label).replace(/\\/g, '\\\\').replace(/\"/g,'&quot;')}\"><i class=\"fa fa-life-ring\"></i> Solicitar ayuda</button>`;
+                    let fieldHtml = `<div class=\"mb-3\"><label for=\"${fieldId}\" class=\"block text-sm font-medium text-gray-700 flex items-center\">${field.label} ${field.required ? '<span class=\\"text-red-500\\">*</span>' : ''}${helpBtn}</label>`;
                     if (field.type === 'boolean') {
                         fieldHtml += `<select id="${fieldId}" data-label="${field.label}" data-prefix="${prefix}" ${required} class="mt-1 block w-full p-2 border border-gray-300 bg-white rounded-md">
                             <option value="" ${value === '' ? 'selected' : ''}>--</option><option value="true" ${value === true ? 'selected' : ''}>Sí</option><option value="false" ${value === false ? 'selected' : ''}>No</option></select>`;
+                    } else if (field.type === 'media') {
+                        const uploads = Array.isArray(value) ? value : [];
+                        const itemsHtml = uploads.map((u, i) => {
+                            const meta = u.capturedAtMs ? new Date(u.capturedAtMs).toLocaleString('es-VE') : (u.capturedAt || '');
+                            const title = u.title ? `<div class="font-medium">${u.title}</div>` : '';
+                            const desc = u.description ? `<div class="text-xs text-gray-600">${u.description}</div>` : '';
+                            if ((u.contentType||'').startsWith('image/') || u.kind === 'image') {
+                                return `<div class="media-item card bg-white rounded border p-2 flex flex-col gap-1" draggable="true" data-index="${i}">
+                                    <div class="w-full aspect-video bg-gray-100 rounded overflow-hidden flex items-center justify-center"><img src="${u.url}" alt="${u.name||''}" class="object-contain w-full h-full"></div>
+                                    <div class="text-[11px] text-gray-500">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>
+                                    ${title}${desc}
+                                    <div class="flex gap-2 mt-1"><button type="button" class="media-edit-btn text-xs text-cyan-700" data-index="${i}">Editar</button><button type="button" class="media-delete-btn text-xs text-red-600" data-index="${i}">Eliminar</button></div>
+                                </div>`;
+                            } else if ((u.contentType||'').startsWith('video/') || u.kind === 'video') {
+                                return `<div class="media-item card bg-white rounded border p-2 flex flex-col gap-1" draggable="true" data-index="${i}">
+                                    <div class="w-full bg-black rounded overflow-hidden"><video src="${u.url}" class="w-full h-32 object-contain" controls></video></div>
+                                    <div class="text-[11px] text-gray-500">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>
+                                    ${title}${desc}
+                                    <div class="flex gap-2 mt-1"><button type="button" class="media-edit-btn text-xs text-cyan-700" data-index="${i}">Editar</button><button type="button" class="media-delete-btn text-xs text-red-600" data-index="${i}">Eliminar</button></div>
+                                </div>`;
+                            }
+                            return `<div class="media-item card bg-white rounded border p-2 flex flex-col gap-1" draggable="true" data-index="${i}">
+                                <a href="${u.url}" target="_blank" class="text-cyan-700 underline text-sm">${u.name||'archivo'}</a>
+                                <div class="text-[11px] text-gray-500">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>
+                                ${title}${desc}
+                                <div class="flex gap-2 mt-1"><button type="button" class="media-edit-btn text-xs text-cyan-700" data-index="${i}">Editar</button><button type="button" class="media-delete-btn text-xs text-red-600" data-index="${i}">Eliminar</button></div>
+                            </div>`;
+                        }).join('');
+                        const multiple = field.multiple ? ' multiple' : '';
+                        fieldHtml += `
+                        <div class="flex flex-col gap-2">
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" id="${fieldId}-capture-image-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold px-2 py-1 rounded">Tomar foto</button>
+                                <button type="button" id="${fieldId}-capture-video-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold px-2 py-1 rounded">Grabar video</button>
+                                <label class="bg-white border px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-50">
+                                    Subir archivo
+                                    <input type="file" id="${fieldId}" accept="image/*,video/*"${multiple} class="hidden">
+                                </label>
+                                <input type="file" id="${fieldId}-image" accept="image/*" capture="environment"${multiple} class="hidden">
+                                <input type="file" id="${fieldId}-video" accept="video/*" capture="environment"${multiple} class="hidden">
+                            </div>
+                            <input type="hidden" id="${fieldId}-data" data-label="${field.label}" data-prefix="${prefix}" value="${uploads.length ? encodeURIComponent(JSON.stringify(uploads)) : ''}">
+                            <div id="${fieldId}-list" class="grid grid-cols-2 sm:grid-cols-3 gap-2">${itemsHtml}</div>
+                            <div id="${fieldId}-progress" class="text-xs text-gray-500"></div>
+                        </div>`;
+                        setTimeout(() => attachUploadHandler(fieldId, field), 0);
+                    } else if (['image','video','file'].includes(field.type)) {
+                        const accept = field.type === 'image' ? 'image/*' : field.type === 'video' ? 'video/*' : '*/*';
+                        const capture = field.type === 'file' ? '' : ' capture="environment"';
+                        const multiple = field.multiple ? ' multiple' : '';
+                        const uploads = Array.isArray(value) ? value : [];
+                        const itemsHtml = uploads.map(u => {
+                            const meta = u.capturedAtMs ? new Date(u.capturedAtMs).toLocaleString('es-VE') : (u.capturedAt || '');
+                            if (field.type === 'image') return `<div class="text-xs text-gray-600 flex flex-col items-start"><div class="w-20 h-20 rounded overflow-hidden border"><img src="${u.url}" alt="${u.name||''}" class="w-full h-full object-cover"></div><div class="mt-1">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div></div>`;
+                            if (field.type === 'video') return `<div class="text-xs text-gray-600 flex flex-col items-start"><video src="${u.url}" class="w-32 h-20 rounded border object-cover" controls></video><div class="mt-1">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div></div>`;
+                            return `<div class="text-xs text-gray-600 flex flex-col items-start"><a href="${u.url}" target="_blank" class="text-cyan-600 underline text-sm">${u.name||'archivo'}</a><div class="mt-1">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div></div>`;
+                        }).join('');
+                        fieldHtml += `
+                        <div class="flex flex-col gap-2">
+                            <input type="file" id="${fieldId}" data-label="${field.label}" data-prefix="${prefix}" accept="${accept}"${capture}${multiple} class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                            <input type="hidden" id="${fieldId}-data" data-label="${field.label}" data-prefix="${prefix}" value="${uploads.length ? encodeURIComponent(JSON.stringify(uploads)) : ''}">
+                            <div id="${fieldId}-list" class="flex flex-wrap gap-2">${itemsHtml}</div>
+                            <div id="${fieldId}-progress" class="text-xs text-gray-500"></div>
+                        </div>`;
+                        setTimeout(() => attachUploadHandler(fieldId, field), 0);
                     } else {
                         fieldHtml += `<input type="${field.type}" id="${fieldId}" data-label="${field.label}" data-prefix="${prefix}" value="${value}" ${required} class="mt-1 block w-full p-2 border border-gray-300 rounded-md">`;
                     }
                     return fieldHtml + `</div>`;
                 }).join('');
             };
+
+            const attachHelpViewers = () => {
+                const container = document.getElementById('app-content');
+                if (!container) return;
+                container.querySelectorAll('.help-view-btn').forEach(btn => {
+                    btn.onclick = (e) => {
+                        e.preventDefault();
+                        const scope = btn.dataset.scope;
+                        const id = btn.dataset.id;
+                        const dataHelp = btn.dataset.help;
+                        if (dataHelp){
+                            try{ const help = JSON.parse(decodeURIComponent(dataHelp)); openHelpViewer(help); }catch(err){ console.error('Help parse error', err); }
+                        } else if (scope && id){
+                            openHelpViewerByScope(scope, id);
+                        }
+                    };
+                });
+            };
+            
+            const attachHelpRequesters = () => {
+                const container = document.getElementById('app-content');
+                if (!container) return;
+                container.querySelectorAll('.help-request-btn').forEach(btn => {
+                    btn.onclick = (e) => {
+                        e.preventDefault();
+                        const scope = btn.dataset.scope;
+                        const id = btn.dataset.id;
+                        const fieldLabel = btn.dataset.fieldLabel || null;
+                        openHelpRequest(scope, id, fieldLabel);
+                    };
+                });
+            };
+
+            const openHelpViewerByScope = (scope, id) => {
+                let help = null;
+                if (scope === 'process'){
+                    const proc = masterProcesses.find(p => p.id === id);
+                    help = proc?.help || null;
+                } else if (scope === 'subprocess'){
+                    const sub = masterSubprocesses.find(s => s.id === id);
+                    help = sub?.help || null;
+                }
+                if (!help){
+                    // Si no hay ayuda publicada, permitir solicitud de ayuda con el contexto
+                    openHelpRequest(scope, id);
+                    return;
+                }
+                openHelpViewer(help);
+            };
+            
+            const openHelpRequest = (scope, id, fieldLabel = null) => {
+                const ctxEl = document.getElementById('help-request-context');
+                const scopeInput = document.getElementById('help-scope');
+                const scopeIdInput = document.getElementById('help-scope-id');
+                const fieldLabelInput = document.getElementById('help-field-label');
+                const descEl = document.getElementById('help-description');
+                
+                let title = '';
+                if (scope === 'process'){
+                    const proc = masterProcesses.find(p => p.id === id);
+                    title = `Proceso: ${proc?.name || id}`;
+                } else if (scope === 'subprocess'){
+                    const sub = masterSubprocesses.find(s => s.id === id);
+                    title = `Subproceso: ${sub?.name || id}`;
+                } else if (scope === 'field'){
+                    title = `Campo: ${fieldLabel || id}`;
+                }
+                ctxEl.textContent = `Contexto · ${title}`;
+                scopeInput.value = scope;
+                scopeIdInput.value = id;
+                fieldLabelInput.value = fieldLabel || '';
+                descEl.value = '';
+                toggleModal('help-request-modal', true);
+            };
+
+            const openHelpViewer = (help) => {
+                const titleEl = document.getElementById('help-viewer-title');
+                const contentEl = document.getElementById('help-viewer-content');
+                const attachEl = document.getElementById('help-viewer-attachments');
+                const toggleDraftBtn = document.getElementById('help-viewer-toggle-draft');
+                const modal = document.getElementById('help-viewer-modal');
+                modal.dataset.showDrafts = 'false';
+                const render = () => {
+                    const showDrafts = modal.dataset.showDrafts === 'true';
+                    titleEl.textContent = help.title || 'Ayuda';
+                    // Mostrar botón de borrador solo si la ayuda no está publicada
+                    if (help.published === true){
+                        toggleDraftBtn.classList.add('hidden');
+                    } else {
+                        toggleDraftBtn.classList.remove('hidden');
+                        toggleDraftBtn.textContent = showDrafts ? 'Ocultar borrador' : 'Ver borrador';
+                    }
+                    if (!help.published && !showDrafts){
+                        contentEl.innerHTML = `<div class=\"text-xs text-gray-500 mb-2\">No hay ayuda publicada para este elemento.</div><p class=\"text-gray-600\">Pulsa \"Ver borrador\" para revisar el contenido en edición.</p>`;
+                        attachEl.innerHTML = '';
+                        return;
+                    }
+                    const createdAtStr = help.createdAt?.toDate ? help.createdAt.toDate().toLocaleString('es-VE') : (help.createdAt || null);
+                    const publishedAtStr = help.publishedAt?.toDate ? help.publishedAt.toDate().toLocaleString('es-VE') : (help.publishedAt || null);
+                    const metaHtml = `<div class=\"text-xs text-gray-500 mb-2\">${help.createdByName ? `Creado por <span class=\"font-medium text-gray-700\">${help.createdByName}</span>` : ''}${createdAtStr ? ` · ${createdAtStr}` : ''}${help.authors && help.authors.length ? ` · Colaboradores: ${help.authors.join(', ')}` : ''}${help.published ? (publishedAtStr ? ` · Publicado: ${publishedAtStr}` : ' · Publicado') : ' · Borrador'}</div>`;
+                    contentEl.innerHTML = `${metaHtml}${help.html || '<p class=\"text-gray-500\">Sin contenido.</p>'}`;
+                    attachEl.innerHTML = (help.attachments || []).map(a => {
+                        const ct = (a.contentType||'');
+                        const title = a.title ? `<p class=\"font-semibold mt-2\">${a.title}</p>` : '';
+                        const desc = a.description ? `<p class=\"text-sm text-gray-600\">${a.description}</p>` : '';
+                        if (ct.startsWith('image/')) return `<div class=\"bg-white rounded-lg border overflow-hidden\"><img src=\"${a.url}\" class=\"w-full max-h-96 object-contain cursor-zoom-in help-img\" data-url=\"${a.url}\"/><div class=\"p-2\">${title}${desc}</div></div>`;
+                        if (ct.startsWith('video/')) return `<div class=\"bg-white rounded-lg border overflow-hidden\"><video src=\"${a.url}\" class=\"w-full h-64 bg-black object-contain cursor-pointer help-video\" controls data-url=\"${a.url}\"></video><div class=\"p-2\">${title}${desc}</div></div>`;
+                        return `<div class=\"bg-white rounded-lg border p-3\"><a href=\"${a.url}\" target=\"_blank\" class=\"text-cyan-700 underline\">${a.name||'archivo'}</a>${title||desc ? `<div class=\"mt-1\">${title}${desc}</div>` : ''}</div>`;
+                    }).join('');
+                    setTimeout(()=>{
+                        document.querySelectorAll('.help-img').forEach(img => { img.onclick = ()=> openLightbox('image', img.dataset.url); });
+                        document.querySelectorAll('.help-video').forEach(v => { v.ondblclick = ()=> openLightbox('video', v.dataset.url); });
+                    }, 0);
+                };
+                toggleDraftBtn.onclick = () => {
+                    modal.dataset.showDrafts = (modal.dataset.showDrafts === 'true') ? 'false' : 'true';
+                    render();
+                };
+                render();
+                toggleModal('help-viewer-modal', true);
+            };
+
+            const openLightbox = (type, url) => {
+                const overlay = document.getElementById('media-lightbox');
+                const content = document.getElementById('media-lightbox-content');
+                const closeBtn = document.getElementById('media-lightbox-close');
+                content.innerHTML = type === 'image'
+                    ? `<img src=\"${url}\" class=\"max-h-[88vh] max-w-[92vw] object-contain\"/>`
+                    : `<video src=\"${url}\" class=\"w-full max-h-[88vh] bg-black\" controls autoplay></video>`;
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+                const close = ()=>{ overlay.classList.add('hidden'); overlay.classList.remove('flex'); content.innerHTML=''; };
+                closeBtn.onclick = close; overlay.onclick = (e)=>{ if (e.target === overlay) close(); };
+            };
+
+            const attachUploadHandler = (fieldId, field) => {
+                const fileInput = document.getElementById(fieldId);
+                const hidden = document.getElementById(`${fieldId}-data`);
+                const list = document.getElementById(`${fieldId}-list`);
+                const progressEl = document.getElementById(`${fieldId}-progress`);
+                if (!hidden) return;
+                const handleFiles = async (files, kindOverride = null) => {
+                    const arr = Array.from(files || []);
+                    if (!arr.length || !activeLogId) return;
+                    progressEl.textContent = 'Subiendo...';
+                    const existing = hidden.value ? JSON.parse(decodeURIComponent(hidden.value)) : [];
+                    for (const file of arr){
+                        try{
+                            const path = `activity_logs/${activeLogId}/${sanitizePath(field.label)}/${Date.now()}-${sanitizePath(file.name)}`;
+                            const ref = storage.ref().child(path);
+                            await ref.put(file);
+                            const url = await ref.getDownloadURL();
+                            const kind = kindOverride || ((file.type||'').startsWith('image/') ? 'image' : (file.type||'').startsWith('video/') ? 'video' : (field.type === 'media' ? 'file' : field.type));
+                            const entry = { url, name: file.name, contentType: file.type || null, size: file.size || null, kind, capturedAtMs: Date.now(), capturedById: currentUser?.id || null, capturedByName: currentUser?.name || null };
+                            existing.push(entry);
+                        }catch(err){ console.error('Upload failed', err); alert('No se pudo subir un archivo.'); }
+                    }
+                    hidden.value = encodeURIComponent(JSON.stringify(existing));
+                    progressEl.textContent = '';
+                    if (field.type === 'media'){
+                        renderUploadsList(fieldId, field);
+                    } else {
+                        // añadir último item visual rápido (mantener comportamiento previo)
+                        const last = existing[existing.length - 1];
+                        if (last){
+                            const meta = last.capturedAtMs ? new Date(last.capturedAtMs).toLocaleString('es-VE') : '';
+                            const itemHtml = field.type === 'image'
+                                ? `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><div class=\"w-20 h-20 rounded overflow-hidden border\"><img src=\"${last.url}\" alt=\"${last.name||''}\" class=\"w-full h-full object-cover\"></div><div class=\"mt-1\">${meta}${last.capturedByName ? ' · ' + last.capturedByName : ''}</div></div>`
+                                : field.type === 'video'
+                                ? `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><video src=\"${last.url}\" class=\"w-32 h-20 rounded border object-cover\" controls></video><div class=\"mt-1\">${meta}${last.capturedByName ? ' · ' + last.capturedByName : ''}</div></div>`
+                                : `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><a href=\"${last.url}\" target=\"_blank\" class=\"text-cyan-600 underline text-sm\">${last.name||'archivo'}</a><div class=\"mt-1\">${meta}${last.capturedByName ? ' · ' + last.capturedByName : ''}</div></div>`;
+                            list?.insertAdjacentHTML('beforeend', itemHtml);
+                        }
+                    }
+                    checkFormValidity();
+                };
+                if (field.type === 'media'){
+                    const fileInputMain = document.getElementById(fieldId);
+                    const fileInputImage = document.getElementById(`${fieldId}-image`);
+                    const fileInputVideo = document.getElementById(`${fieldId}-video`);
+                    const btnImage = document.getElementById(`${fieldId}-capture-image-btn`);
+                    const btnVideo = document.getElementById(`${fieldId}-capture-video-btn`);
+                    if (fileInputMain) fileInputMain.onchange = (e) => handleFiles(e.target.files);
+                    if (fileInputImage) fileInputImage.onchange = (e) => handleFiles(e.target.files, 'image');
+                    if (fileInputVideo) fileInputVideo.onchange = (e) => handleFiles(e.target.files, 'video');
+                    if (btnImage) btnImage.onclick = () => fileInputImage?.click();
+                    if (btnVideo) btnVideo.onclick = () => fileInputVideo?.click();
+                    renderUploadsList(fieldId, field);
+                } else {
+                    if (!fileInput || !hidden) return;
+                    fileInput.onchange = (e) => handleFiles(e.target.files);
+                }
+            };
+
+            const renderUploadsList = (fieldId, field) => {
+                if (field.type !== 'media') return;
+                const hidden = document.getElementById(`${fieldId}-data`);
+                const list = document.getElementById(`${fieldId}-list`);
+                if (!hidden || !list) return;
+                const uploads = hidden.value ? JSON.parse(decodeURIComponent(hidden.value)) : [];
+                const cardHtml = uploads.map((u, i) => {
+                    const meta = u.capturedAtMs ? new Date(u.capturedAtMs).toLocaleString('es-VE') : (u.capturedAt || '');
+                    const title = u.title ? `<div class=\"font-medium\">${u.title}</div>` : '';
+                    const desc = u.description ? `<div class=\"text-xs text-gray-600\">${u.description}</div>` : '';
+                    if ((u.contentType||'').startsWith('image/') || u.kind === 'image'){
+                        return `<div class=\"media-item card bg-white rounded border p-2 flex flex-col gap-1\" draggable=\"true\" data-index=\"${i}\">`
+                            + `<div class=\"w-full aspect-video bg-gray-100 rounded overflow-hidden flex items-center justify-center\"><img src=\"${u.url}\" alt=\"${u.name||''}\" class=\"object-contain w-full h-full\"></div>`
+                            + `<div class=\"text-[11px] text-gray-500\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>`
+                            + `${title}${desc}`
+                            + `<div class=\"flex gap-2 mt-1\"><button type=\"button\" class=\"media-edit-btn text-xs text-cyan-700\" data-index=\"${i}\">Editar</button><button type=\"button\" class=\"media-delete-btn text-xs text-red-600\" data-index=\"${i}\">Eliminar</button></div>`
+                        + `</div>`;
+                    } else if ((u.contentType||'').startsWith('video/') || u.kind === 'video'){
+                        return `<div class=\"media-item card bg-white rounded border p-2 flex flex-col gap-1\" draggable=\"true\" data-index=\"${i}\">`
+                            + `<div class=\"w-full bg-black rounded overflow-hidden\"><video src=\"${u.url}\" class=\"w-full h-32 object-contain\" controls></video></div>`
+                            + `<div class=\"text-[11px] text-gray-500\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>`
+                            + `${title}${desc}`
+                            + `<div class=\"flex gap-2 mt-1\"><button type=\"button\" class=\"media-edit-btn text-xs text-cyan-700\" data-index=\"${i}\">Editar</button><button type=\"button\" class=\"media-delete-btn text-xs text-red-600\" data-index=\"${i}\">Eliminar</button></div>`
+                        + `</div>`;
+                    }
+                    return `<div class=\"media-item card bg-white rounded border p-2 flex flex-col gap-1\" draggable=\"true\" data-index=\"${i}\">`
+                        + `<a href=\"${u.url}\" target=\"_blank\" class=\"text-cyan-700 underline text-sm\">${u.name||'archivo'}</a>`
+                        + `<div class=\"text-[11px] text-gray-500\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>`
+                        + `${title}${desc}`
+                        + `<div class=\"flex gap-2 mt-1\"><button type=\"button\" class=\"media-edit-btn text-xs text-cyan-700\" data-index=\"${i}\">Editar</button><button type=\"button\" class=\"media-delete-btn text-xs text-red-600\" data-index=\"${i}\">Eliminar</button></div>`
+                    + `</div>`;
+                }).join('');
+                list.innerHTML = cardHtml;
+                list.querySelectorAll('.media-delete-btn').forEach(btn => {
+                    btn.onclick = () => {
+                        const idx = parseInt(btn.dataset.index);
+                        const arr = hidden.value ? JSON.parse(decodeURIComponent(hidden.value)) : [];
+                        arr.splice(idx, 1);
+                        hidden.value = encodeURIComponent(JSON.stringify(arr));
+                        renderUploadsList(fieldId, field);
+                        checkFormValidity();
+                    };
+                });
+                list.querySelectorAll('.media-edit-btn').forEach(btn => {
+                    btn.onclick = () => {
+                        const idx = parseInt(btn.dataset.index);
+                        openMediaMetaEditor(fieldId, field, idx);
+                    };
+                });
+                attachReorderHandlers(list, hidden, fieldId, field);
+            };
+
+            const attachReorderHandlers = (list, hidden, fieldId, field) => {
+                let dragIndex = null;
+                list.querySelectorAll('.media-item').forEach(card => {
+                    card.addEventListener('dragstart', (e) => {
+                        dragIndex = parseInt(card.dataset.index);
+                        e.dataTransfer.effectAllowed = 'move';
+                    });
+                    card.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+                    card.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        const dropIndex = parseInt(card.dataset.index);
+                        if (dragIndex === null || dragIndex === dropIndex) return;
+                        const arr = hidden.value ? JSON.parse(decodeURIComponent(hidden.value)) : [];
+                        const [moved] = arr.splice(dragIndex, 1);
+                        arr.splice(dropIndex, 0, moved);
+                        hidden.value = encodeURIComponent(JSON.stringify(arr));
+                        renderUploadsList(fieldId, field);
+                    });
+                });
+            };
+
+            const openMediaMetaEditor = (fieldId, field, index) => {
+                const hidden = document.getElementById(`${fieldId}-data`);
+                const list = document.getElementById(`${fieldId}-list`);
+                if (!hidden || !list) return;
+                const arr = hidden.value ? JSON.parse(decodeURIComponent(hidden.value)) : [];
+                const item = arr[index]; if (!item) return;
+                const editorId = `${fieldId}-editor-${index}`;
+                let editor = document.getElementById(editorId);
+                if (!editor){
+                    editor = document.createElement('div');
+                    editor.id = editorId;
+                    editor.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50';
+                    editor.innerHTML = `
+                        <div class=\"bg-white rounded-lg shadow-xl w-full max-w-md p-4\">
+                            <h3 class=\"font-semibold text-lg mb-3\">Editar metadatos</h3>
+                            <div class=\"space-y-3\">
+                                <div>
+                                    <label class=\"text-sm text-gray-700\">Título</label>
+                                    <input type=\"text\" id=\"${editorId}-title\" class=\"mt-1 w-full p-2 border rounded\" value=\"${item.title ? String(item.title).replace(/\\/g, '\\\\').replace(/\"/g,'&quot;') : ''}\"> 
+                                </div>
+                                <div>
+                                    <label class=\"text-sm text-gray-700\">Descripción</label>
+                                    <textarea id=\"${editorId}-desc\" class=\"mt-1 w-full p-2 border rounded\" rows=\"3\">${item.description ? String(item.description).replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''}</textarea>
+                                </div>
+                            </div>
+                            <div class=\"flex justify-end gap-2 mt-4\">
+                                <button id=\"${editorId}-cancel\" class=\"px-3 py-2 rounded border\">Cancelar</button>
+                                <button id=\"${editorId}-save\" class=\"px-3 py-2 rounded bg-cyan-600 text-white\">Guardar</button>
+                            </div>
+                        </div>`;
+                    document.body.appendChild(editor);
+                    document.getElementById(`${editorId}-cancel`).onclick = () => { editor.remove(); };
+                    document.getElementById(`${editorId}-save`).onclick = () => {
+                        const title = document.getElementById(`${editorId}-title`).value.trim();
+                        const description = document.getElementById(`${editorId}-desc`).value.trim();
+                        arr[index] = { ...item, title: title || undefined, description: description || undefined };
+                        hidden.value = encodeURIComponent(JSON.stringify(arr));
+                        editor.remove();
+                        renderUploadsList(fieldId, field);
+                        checkFormValidity();
+                    };
+                }
+            };
+
+            const sanitizePath = (s) => (s || 'archivo').toString().replace(/[^a-zA-Z0-9-_\.]/g, '_');
 
             const updateTimerDisplay = () => {
                 const timerEl = document.getElementById('timer');
@@ -771,11 +1282,29 @@
             
             const getCurrentState = () => {
                 const state = { custom_data: {}, completed_subprocesses: [] };
-                document.querySelectorAll('[data-prefix="main"]').forEach(input => { let value = input.value; if (input.tagName === 'SELECT') value = value === '' ? null : value === 'true'; state.custom_data[input.dataset.label] = value; });
+                document.querySelectorAll('[data-prefix="main"]').forEach(input => {
+                    if (input.type === 'hidden' && input.id.endsWith('-data')){
+                        const raw = input.value ? JSON.parse(decodeURIComponent(input.value)) : [];
+                        state.custom_data[input.dataset.label] = raw;
+                        return;
+                    }
+                    if (input.type === 'file') return; // se maneja con hidden
+                    let value = input.value; if (input.tagName === 'SELECT') value = value === '' ? null : value === 'true';
+                    state.custom_data[input.dataset.label] = value;
+                });
                 document.querySelectorAll('input[type="checkbox"][data-sub-id]:checked').forEach(cb => {
                     const subId = cb.dataset.subId, subContainer = cb.closest('.bg-gray-50'), quantityInput = subContainer.querySelector('.quantity-input');
                     const subData = { subprocess_id: subId, quantity: quantityInput ? parseInt(quantityInput.value) || 1 : 1, custom_data: {} };
-                    subContainer.querySelectorAll(`[data-prefix="sub-${subId}"]`).forEach(input => { let value = input.value; if (input.tagName === 'SELECT') value = value === '' ? null : value === 'true'; subData.custom_data[input.dataset.label] = value; });
+                    subContainer.querySelectorAll(`[data-prefix="sub-${subId}"]`).forEach(input => {
+                        if (input.type === 'hidden' && input.id.endsWith('-data')){
+                            const raw = input.value ? JSON.parse(decodeURIComponent(input.value)) : [];
+                            subData.custom_data[input.dataset.label] = raw;
+                            return;
+                        }
+                        if (input.type === 'file') return;
+                        let value = input.value; if (input.tagName === 'SELECT') value = value === '' ? null : value === 'true';
+                        subData.custom_data[input.dataset.label] = value;
+                    });
                     state.completed_subprocesses.push(subData);
                 });
                 return state;
@@ -805,6 +1334,10 @@
                     activeLogData = { id: doc.id, ...doc.data() };
                     
                     renderTimerView();
+                    try{
+                        const process = masterProcesses.find(p => p.id === activeLogData.process_id);
+                        window.parent?.postMessage({ type: 'technicianTask', id: activeLogId, title: process?.name || 'Tarea' }, '*');
+                    }catch(e){}
                 } catch (error) { console.error("Error al iniciar proceso:", error); } finally { toggleLoading(false); }
             };
 
@@ -832,6 +1365,10 @@
                     activeLogData = { id: finalDoc.id, ...finalDoc.data() };
 
                     renderTimerView();
+                    try{
+                        const process = masterProcesses.find(p => p.id === activeLogData.process_id);
+                        window.parent?.postMessage({ type: 'technicianTask', id: activeLogId, title: process?.name || 'Tarea' }, '*');
+                    }catch(e){}
                 } catch (error) { console.error("Error resuming process:", error); alert('No se pudo reanudar la tarea.'); } finally { toggleLoading(false); }
             };
 
@@ -854,6 +1391,7 @@
                         current_state: currentState,
                         last_resumed_at: firebase.firestore.FieldValue.delete()
                     });
+                    try{ window.parent?.postMessage({ type: 'technicianTaskEnd', id: activeLogId }, '*'); }catch(e){}
                     activeLogId = null; activeLogData = {};
                     renderMainTabView();
                 } catch(error) { console.error("Error al pausar:", error); } finally { toggleLoading(false); }
@@ -871,6 +1409,67 @@
                 const finalState = getCurrentState();
                 toggleLoading(true, 'Finalizando...');
                 try {
+                    // --- Calcular puntos (oculto para técnicos) ---
+                    const POINT_WEIGHT_EFFORT = systemParams.weight_effort ?? 4;
+                    const POINT_WEIGHT_DIFFICULTY = systemParams.weight_difficulty ?? 4;
+                    const POINT_WEIGHT_INTELLECT = systemParams.weight_intellect ?? 4;
+                    const TIME_POINTS_FACTOR = systemParams.time_points_factor ?? 1; // puntos por minuto esperado
+                    let points_awarded = null;
+                    let points_method = null;
+                    let expected_time_minutes_used = null;
+                    let classification_snapshot = null;
+                    try {
+                        const proc = masterProcesses.find(p => p.id === activeLogData.process_id) || {};
+                        const cl = proc.classification || { effort:1, difficulty:1, intellect:1 };
+                        classification_snapshot = { ...cl };
+                        const manualPoints = proc.points_use_manual && proc.base_points_manual ? proc.base_points_manual : null;
+                        const expectedManual = proc.expected_time_minutes_manual || null;
+                        const expectedAuto = proc.avg_time_minutes_auto || null;
+                        const expected = expectedManual != null ? expectedManual : (expectedAuto != null ? expectedAuto : (finalTotalDuration/60));
+                        expected_time_minutes_used = Math.round(expected*10)/10;
+                        const pointsFromClass = (cl.effort||1)*POINT_WEIGHT_EFFORT + (cl.difficulty||1)*POINT_WEIGHT_DIFFICULTY + (cl.intellect||1)*POINT_WEIGHT_INTELLECT;
+                        if (manualPoints != null){
+                            points_awarded = manualPoints;
+                            points_method = 'manual';
+                        } else {
+                            const pointsFromTime = Math.round(expected * TIME_POINTS_FACTOR);
+                            points_awarded = pointsFromTime + pointsFromClass;
+                            points_method = 'auto';
+                        }
+                        points_awarded = Math.max(0, Math.round(points_awarded));
+                    } catch(e) { console.warn('No se pudieron calcular puntos para esta tarea', e); }
+
+                    // --- Puntos por subproceso (desglosado) ---
+                    try {
+                        if (Array.isArray(finalState.completed_subprocesses)){
+                            finalState.completed_subprocesses = finalState.completed_subprocesses.map(sub => {
+                                const subMeta = masterSubprocesses.find(s => s.id === sub.subprocess_id) || {};
+                                const scl = subMeta.classification || { effort:1, difficulty:1, intellect:1 };
+                                const subManualPoints = subMeta.points_use_manual && subMeta.base_points_manual ? subMeta.base_points_manual : null;
+                                const subExpectedManual = subMeta.expected_time_minutes_manual || null;
+                                const subExpected = subExpectedManual != null ? subExpectedManual : null; // sin automático por falta de métricas desagregadas
+                                let subPoints = null; let subMethod = null; let subExpectedUsed = null;
+                                const subPointsFromClass = (scl.effort||1)*POINT_WEIGHT_EFFORT + (scl.difficulty||1)*POINT_WEIGHT_DIFFICULTY + (scl.intellect||1)*POINT_WEIGHT_INTELLECT;
+                                if (subManualPoints != null){
+                                    subPoints = subManualPoints;
+                                    subMethod = 'manual';
+                                } else if (subExpected != null){
+                                    subExpectedUsed = Math.round(subExpected*10)/10;
+                                    const subTimePts = Math.round(subExpectedUsed * TIME_POINTS_FACTOR);
+                                    subPoints = subTimePts + subPointsFromClass;
+                                    subMethod = 'auto';
+                                } else {
+                                    // Solo clasificación
+                                    subPoints = subPointsFromClass;
+                                    subMethod = 'class-only';
+                                }
+                                subPoints = Math.max(0, Math.round(subPoints));
+                                const quantity = sub.quantity || 1;
+                                return { ...sub, points: { points_awarded: subPoints * quantity, points_method: subMethod, expected_time_minutes_used: subExpectedUsed, classification_snapshot: { ...scl }, quantity } };
+                            });
+                        }
+                    } catch(e) { console.warn('No se pudieron calcular puntos por subproceso', e); }
+
                     const finalData = {
                         status: 'completed',
                         total_duration_seconds: finalTotalDuration,
@@ -878,9 +1477,11 @@
                         custom_data: finalState.custom_data,
                         completed_subprocesses: finalState.completed_subprocesses,
                         current_state: firebase.firestore.FieldValue.delete(),
-                        last_resumed_at: firebase.firestore.FieldValue.delete()
+                        last_resumed_at: firebase.firestore.FieldValue.delete(),
+                        ...(points_awarded != null ? { points_awarded, points_method, expected_time_minutes_used, classification_snapshot } : {})
                     };
                     await activityLogsCol.doc(activeLogId).set(finalData, { merge: true });
+                    try{ window.parent?.postMessage({ type: 'technicianTaskEnd', id: activeLogId }, '*'); }catch(e){}
                     activeLogId = null; activeLogData = {};
                     renderMainTabView();
                 } catch(error) { 
@@ -919,6 +1520,7 @@
                         last_resumed_at: firebase.firestore.FieldValue.delete()
                     };
                     await activityLogsCol.doc(activeLogId).set(finalData, { merge: true });
+                    try{ window.parent?.postMessage({ type: 'technicianTaskEnd', id: activeLogId }, '*'); }catch(e){}
                     
                     activeLogId = null; 
                     activeLogData = {};
@@ -959,6 +1561,53 @@
                     document.getElementById('part-description').value = '';
                     toggleModal('part-request-modal', false);
                 } catch (error) { console.error("Error al solicitar repuesto:", error); } finally { toggleLoading(false); }
+            };
+
+            const submitHelpRequest = async () => {
+                const scope = document.getElementById('help-scope').value;
+                const scopeId = document.getElementById('help-scope-id').value;
+                const fieldLabel = document.getElementById('help-field-label').value || null;
+                const description = document.getElementById('help-description').value.trim();
+                if (!scope || !scopeId || !description || !currentUser) return;
+                const payload = {
+                    requesting_employee_id: currentUser.id,
+                    requesting_employee_name: employeesMap[currentUser.id]?.name || null,
+                    description,
+                    scope,
+                    scope_id: scopeId,
+                    field_label: fieldLabel || null,
+                    status: 'Solicitado',
+                    created_at: firebase.firestore.FieldValue.serverTimestamp(),
+                    activity_log_id: activeLogId || null,
+                    activity_log_process_id: activeLogData?.process_id || null
+                };
+                // Añadir nombres legibles si están disponibles
+                try {
+                    if (scope === 'process'){
+                        const proc = masterProcesses.find(p => p.id === scopeId);
+                        if (proc) payload.process_name = proc.name;
+                    } else if (scope === 'subprocess'){
+                        const sub = masterSubprocesses.find(s => s.id === scopeId);
+                        if (sub) {
+                            payload.subprocess_name = sub.name;
+                            const parent = masterProcesses.find(p => (p.checklist||[]).includes(scopeId));
+                            if (parent) { payload.process_name = parent.name; payload.activity_log_process_id = parent.id; }
+                        }
+                    }
+                } catch(e) { /* noop */ }
+
+                toggleLoading(true, 'Enviando solicitud...');
+                try {
+                    await helpRequestsCol.add(payload);
+                    document.getElementById('help-description').value = '';
+                    toggleModal('help-request-modal', false);
+                    alert('Solicitud de ayuda enviada.');
+                } catch (error) {
+                    console.error('Error al crear solicitud de ayuda:', error);
+                    alert('No se pudo enviar la solicitud de ayuda.');
+                } finally {
+                    toggleLoading(false);
+                }
             };
 
             window.openCompletedTaskModal = async (logId) => {
@@ -1003,9 +1652,22 @@
                     const dataToShow = (logData.status === 'completed' || logData.status === 'annulled') ? logData : (logData.current_state || {});
 
                     if (dataToShow.custom_data && Object.keys(dataToShow.custom_data).length > 0) {
-                        detailsHtml += `<hr><h4 class="font-semibold text-gray-700">Datos del Proceso</h4><div class="space-y-1 text-sm">`;
+                        detailsHtml += `<hr><h4 class="font-semibold text-gray-700">Datos del Proceso</h4><div class="space-y-2 text-sm">`;
                         for (const [key, value] of Object.entries(dataToShow.custom_data)) {
-                            detailsHtml += `<p><strong class="font-medium">${key}:</strong> ${value === true ? 'Sí' : value === false ? 'No' : (value || 'No especificado')}</p>`;
+                            if (Array.isArray(value)){
+                                const media = value;
+                                const items = media.map(u => {
+                                    const meta = u.capturedAtMs ? new Date(u.capturedAtMs).toLocaleString('es-VE') : (u.capturedAt || '');
+                                    const title = u.title ? `<div class=\"font-medium\">${u.title}</div>` : '';
+                                    const desc = u.description ? `<div class=\"text-[11px] text-gray-600\">${u.description}</div>` : '';
+                                    if (u.kind === 'image') return `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><div class=\"w-20 h-20 rounded overflow-hidden border\"><img src=\"${u.url}\" alt=\"${u.name||''}\" class=\"w-full h-full object-cover\"></div><div class=\"mt-1\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>${title}${desc}</div>`;
+                                    if (u.kind === 'video') return `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><video src=\"${u.url}\" class=\"w-32 h-20 rounded border object-cover\" controls></video><div class=\"mt-1\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>${title}${desc}</div>`;
+                                    return `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><a href=\"${u.url}\" target=\"_blank\" class=\"text-cyan-600 underline\">${u.name||'archivo'}</a><div class=\"mt-1\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>${title}${desc}</div>`;
+                                }).join('');
+                                detailsHtml += `<div><p class=\"font-medium\">${key}:</p><div class=\"mt-1 flex flex-wrap gap-2\">${items || '<span class=\"text-gray-500\">(sin archivos)</span>'}</div></div>`;
+                            } else {
+                                detailsHtml += `<p><strong class=\"font-medium\">${key}:</strong> ${value === true ? 'Sí' : value === false ? 'No' : (value || 'No especificado')}</p>`;
+                            }
                         }
                         detailsHtml += `</div>`;
                     }
@@ -1017,9 +1679,22 @@
                             detailsHtml += `<div class="bg-gray-50 p-3 rounded-lg border text-sm">
                                 <p class="font-semibold">${subProcess?.name || 'N/A'} ${subLog.quantity > 1 ? `(x${subLog.quantity})` : ''}</p>`;
                             if (subLog.custom_data && Object.keys(subLog.custom_data).length > 0) {
-                                 detailsHtml += `<div class="pl-2 mt-1 border-l-2">`;
+                                 detailsHtml += `<div class=\"pl-2 mt-1 border-l-2 space-y-2\">`;
                                 for (const [key, value] of Object.entries(subLog.custom_data)) {
-                                    detailsHtml += `<p><strong class="font-medium">${key}:</strong> ${value === true ? 'Sí' : value === false ? 'No' : (value || 'No especificado')}</p>`;
+                                    if (Array.isArray(value)){
+                                        const media = value;
+                                        const items = media.map(u => {
+                                            const meta = u.capturedAtMs ? new Date(u.capturedAtMs).toLocaleString('es-VE') : (u.capturedAt || '');
+                                            const title = u.title ? `<div class=\"font-medium\">${u.title}</div>` : '';
+                                            const desc = u.description ? `<div class=\"text-[11px] text-gray-600\">${u.description}</div>` : '';
+                                            if (u.kind === 'image') return `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><div class=\"w-16 h-16 rounded overflow-hidden border\"><img src=\"${u.url}\" alt=\"${u.name||''}\" class=\"w-full h-full object-cover\"></div><div class=\"mt-1\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>${title}${desc}</div>`;
+                                            if (u.kind === 'video') return `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><video src=\"${u.url}\" class=\"w-24 h-16 rounded border object-cover\" controls></video><div class=\"mt-1\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>${title}${desc}</div>`;
+                                            return `<div class=\"text-xs text-gray-600 flex flex-col items-start\"><a href=\"${u.url}\" target=\"_blank\" class=\"text-cyan-600 underline text-sm\">${u.name||'archivo'}</a><div class=\"mt-1\">${meta}${u.capturedByName ? ' · ' + u.capturedByName : ''}</div>${title}${desc}</div>`;
+                                        }).join('');
+                                        detailsHtml += `<div><p class=\"font-medium\">${key}:</p><div class=\"mt-1 flex flex-wrap gap-2\">${items || '<span class=\"text-gray-500\">(sin archivos)</span>'}</div></div>`;
+                                    } else {
+                                        detailsHtml += `<p><strong class=\"font-medium\">${key}:</strong> ${value === true ? 'Sí' : value === false ? 'No' : (value || 'No especificado')}</p>`;
+                                    }
                                 }
                                  detailsHtml += `</div>`;
                             }
@@ -1099,12 +1774,34 @@
             });
 
             document.getElementById('request-confirm-btn').onclick = requestPart;
+            document.getElementById('help-request-confirm-btn').onclick = submitHelpRequest;
             document.getElementById('edit-request-cancel-btn').onclick = closeEditRequestModal;
             document.getElementById('edit-request-confirm-btn').onclick = saveRequestChanges;
             document.getElementById('edit-request-delete-btn').onclick = deleteRequest;
             document.getElementById('cancel-confirm-btn').onclick = cancelProcess;
             
             init();
+            // Escuchar mensajes del host para auto-login del técnico (si aplica)
+            window.addEventListener('message', (ev) => {
+                try {
+                    const payload = ev.data || {};
+                    if (payload.type === 'hostAuthReady') {
+                        const appUserId = (payload.appUser && payload.appUser.id) || null;
+                        if (appUserId) {
+                            const btn = document.querySelector(`[data-employee-id="${appUserId}"]`);
+                            if (btn) {
+                                btn.click();
+                            } else {
+                                // Marcar pendiente para cuando se renderice la lista
+                                window.__pendingHostAppUserId = appUserId;
+                            }
+                        } else {
+                            // Host cerró sesión o cambió a usuario no mapeado: salir
+                            try { logout(); } catch(e){}
+                        }
+                    }
+                } catch (e) { console.warn('Error procesando mensaje host en Technician:', e); }
+            });
         });
     </script>
 </body>

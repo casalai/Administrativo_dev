@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creación de Items (v1.4)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome (para iconos de chevron, editar, eliminar, etc.) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- SortableJS (para Reordenar Multimedia v1.4) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        /* Estilos para el Acordeón */
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background-color: #ffffff; /* Fondo blanco para el contenido */
+        }
+
+        .accordion-content.open {
+            /* La altura se establecerá con JS (scrollHeight) */
+        }
+
+        .accordion-header.active {
+            background-color: #eff6ff; /* bg-blue-50 */
+        }
+
+        .accordion-header .chevron-icon {
+            transition: transform 0.2s ease-out;
+        }
+
+        .accordion-header.active .chevron-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Estilos para Drag & Drop de SortableJS */
+        .sortable-ghost {
+            opacity: 0.4;
+            background: #cce7ff;
+            border: 2px dashed #4a90e2;
+        }
+
+        /* Estilos para la previsualización de imágenes */
+        .image-preview-item {
+            position: relative;
+            overflow: hidden;
+            border-radius: 0.5rem; /* rounded-lg */
+            border: 1px solid #e5e7eb; /* border-gray-200 */
+        }
+        .image-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Estilos para Acciones de Imagen (Eliminar/Archivar) */
+        .image-preview-item .action-buttons {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+        .image-preview-item:hover .action-buttons {
+            opacity: 1;
+        }
+        .image-preview-item .action-btn {
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border-radius: 9999px; /* rounded-full */
+            width: 1.75rem; /* w-7 */
+            height: 1.75rem; /* h-7 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: none;
+        }
+        .image-preview-item .action-btn:hover {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        .image-preview-item .delete-btn:hover {
+            background-color: #ef4444; /* red-500 */
+        }
+
+        .image-preview-item.archived > img {
+            opacity: 0.3;
+        }
+        .image-preview-item.archived .action-buttons,
+        .image-preview-item.archived .edit-meta-btn {
+            display: none; /* Ocultar acciones cuando está archivado */
+        }
+        .archive-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.7);
+            display: none; /* Oculto por defecto */
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            cursor: pointer;
+        }
+        .image-preview-item.archived .archive-overlay {
+            display: flex; /* Mostrar cuando está archivado */
+        }
+        
+        /* Ocultar campos condicionales por defecto */
+        .conditional-content {
+            display: none;
+        }
+
+        /* Mostrar campos condicionales cuando están activos */
+        .conditional-content.visible {
+            display: block;
+        }
+        
+        /* Estilos de Validación (simulados) */
+        .form-input.invalid-obligatorio {
+             border-color: #ef4444; /* border-red-500 */
+             box-shadow: 0 0 0 2px #fecaca; /* Sombra roja ligera */
+        }
+        .form-input.invalid-necesario {
+             border-color: #f97316; /* border-orange-500 */
+             box-shadow: 0 0 0 2px #fed7aa; /* Sombra naranja ligera */
+        }
+        
+        /* Estilos para el Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 1.5rem; /* p-6 */
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-lg */
+            width: 90%;
+            max-width: 500px;
+        }
+        
+        /* Estilos para Notificación Toast */
+        .toast-notification {
+            position: fixed;
+            bottom: 1.25rem; /* bottom-5 */
+            right: 1.25rem; /* right-5 */
+            background-color: #22c55e; /* bg-green-500 */
+            color: white;
+            padding: 0.75rem 1.5rem; /* px-6 py-3 */
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-lg */
+            transition: opacity 0.3s ease;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased">
+
+    <div class="container mx-auto max-w-5xl p-4 md:p-8">
+        <header class="mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Creación de Items (v1.4)</h1>
+            <p class="text-gray-600">Formulario principal de inventario.</p>
+        </header>
+
+        <!-- 3.1. Campo Maestro (Switcher) -->
+        <div class="mb-6 bg-white p-6 rounded-lg shadow-md">
+            <label for="itemTypeSwitcher" class="block text-sm font-medium text-gray-700 mb-2">1. Tipo de Item <span class="text-red-500">*</span></label>
+            <select id="itemTypeSwitcher" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                <option value="producto" selected>Producto (Ítem físico)</option>
+                <option value="servicio">Servicio (Item intangible)</option>
+                <option value="combo">Ítem Compuesto (Combo)</option>
+            </select>
+        </div>
+
+        <!-- 4. Vista: Ítem Simple (Producto/Servicio) -->
+        <div id="itemSimpleView">
+            <div class="accordion-container space-y-2">
+                
+                <!-- Sección 4.1: Datos Básicos -->
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-4-1">
+                        <h3 class="text-lg font-semibold text-gray-900">1. Datos Básicos</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-4-1" class="accordion-content p-6 border-t border-gray-200">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Descripción -->
+                            <div class="md:col-span-2">
+                                <label for="descripcion" class="block text-sm font-medium text-gray-700">Descripción <span class="text-red-500">*</span></label>
+                                <input type="text" id="descripcion" data-validation="obligatorio" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Ej: Impresora Epson L3250">
+                            </div>
+                            <!-- Marca -->
+                            <div>
+                                <label for="marca" class="block text-sm font-medium text-gray-700">Marca <span class="text-orange-500">*</span></label>
+                                <input type="text" id="marca" data-validation="necesario" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            </div>
+                            <!-- Modelo -->
+                            <div>
+                                <label for="modelo" class="block text-sm font-medium text-gray-700">Modelo <span class="text-orange-500">*</span></label>
+                                <input type="text" id="modelo" data-validation="necesario" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            </div>
+                            <!-- SKU -->
+                            <div>
+                                <label for="sku" class="block text-sm font-medium text-gray-700">Referencia / SKU <span class="text-red-500">*</span></label>
+                                <input type="text" id="sku" data-validation="obligatorio" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            </div>
+                            <!-- Propósito -->
+                            <div>
+                                <label for="proposito" class="block text-sm font-medium text-gray-700">Propósito del ítem <span class="text-red-500">*</span></label>
+                                <select id="proposito" data-validation="obligatorio" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-white">
+                                    <option>Para la Venta</option>
+                                    <option>Uso Interno/Consumo</option>
+                                </select>
+                            </div>
+                            <!-- Usa Código de Barra (Checkbox) -->
+                            <div class="md:col-span-2 mt-4">
+                                <label class="flex items-center space-x-3">
+                                    <input type="checkbox" id="chkUsaCodigoBarra" class="dynamic-toggle h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500" data-target="#codigoBarraContent">
+                                    <span class="text-sm font-medium text-gray-700">Usa Código de Barra</span>
+                                </label>
+                            </div>
+                            <!-- Código de Barra (Condicional) -->
+                            <div id="codigoBarraContent" class="conditional-content md:col-span-2 ml-8">
+                                <label for="codigoBarra" class="block text-sm font-medium text-gray-700">Código de Barra</label>
+                                <input type="text" id="codigoBarra" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sección 4.2: Logística y Stock -->
+                <div id="sectionLogistica" class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-4-2">
+                        <h3 class="text-lg font-semibold text-gray-900">2. Logística y Stock</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-4-2" class="accordion-content p-6 border-t border-gray-200">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <input type="number" placeholder="Stock Mínimo (Necesario)" class="form-input p-2 border border-gray-300 rounded-md" data-validation="necesario">
+                            <input type="number" placeholder="Stock Máximo (Opcional)" class="form-input p-2 border border-gray-300 rounded-md">
+                            <input type="number" placeholder="Tiempo Reposición (días) (Necesario)" class="form-input p-2 border border-gray-300 rounded-md" data-validation="necesario">
+                            <input type="number" placeholder="Alto (cm) (Necesario)" class="form-input p-2 border border-gray-300 rounded-md" data-validation="necesario">
+                            <input type="number" placeholder="Ancho (cm) (Necesario)" class="form-input p-2 border border-gray-300 rounded-md" data-validation="necesario">
+                            <input type="number" placeholder="Profundo (cm) (Necesario)" class="form-input p-2 border border-gray-300 rounded-md" data-validation="necesario">
+                            <input type="number" placeholder="Peso (kg) (Necesario)" class="form-input md:col-span-1 p-2 border border-gray-300 rounded-md" data-validation="necesario">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sección 4.3: Trazabilidad -->
+                <div id="sectionTrazabilidad" class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-4-3">
+                        <h3 class="text-lg font-semibold text-gray-900">3. Trazabilidad</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-4-3" class="accordion-content p-6 border-t border-gray-200">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <select class="form-input p-2 border border-gray-300 rounded-md bg-white" data-validation="obligatorio"><option disabled selected>¿Lleva Número de Serie? *</option><option>Sí</option><option>No</option></select>
+                            <select class="form-input p-2 border border-gray-300 rounded-md bg-white" data-validation="obligatorio"><option disabled selected>¿Maneja Lote? *</option><option>Sí</option><option>No</option></select>
+                            <select class="form-input p-2 border border-gray-300 rounded-md bg-white" data-validation="obligatorio"><option disabled selected>¿Maneja Fecha de Vencimiento? *</option><option>Sí</option><option>No</option></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sección 4.4: Precios e Impuestos -->
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-4-4">
+                        <h3 class="text-lg font-semibold text-gray-900">4. Precios e Impuestos (USD)</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-4-4" class="accordion-content p-6 border-t border-gray-200 space-y-6">
+                        <!-- 4.4.1. Cálculo de Precio de Venta (USD) -->
+                        <fieldset class="border rounded-md p-4">
+                            <legend class="text-md font-medium text-gray-700 px-2">Cálculo de Precio de Venta (USD)</legend>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                                <div>
+                                    <label for="costo" class="block text-xs text-gray-600">Costo (USD) <span class="text-red-500">*</span></label>
+                                    <input type="number" id="costo" data-validation="obligatorio" class="form-input mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="100.00">
+                                </div>
+                                <div>
+                                    <label for="utilidad" class="block text-xs text-gray-600">Utilidad (%)</label>
+                                    <input type="number" id="utilidad" class="form-input mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="25">
+                                </div>
+                                <div>
+                                    <label for="precioVenta" class="block text-xs text-gray-600">Precio Venta (USD)</label>
+                                    <input type="number" id="precioVenta" class="form-input mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="133.33">
+                                </div>
+                            </div>
+                        </fieldset>
+                        
+                        <!-- 4.4.2. Cálculo de Precio Final (USD-BCV) -->
+                        <fieldset class="border rounded-md p-4">
+                            <legend class="text-md font-medium text-gray-700 px-2">Cálculo de Precio Final (USD-BCV)</legend>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                                <div>
+                                    <label for="precioBase" class="block text-xs text-gray-600">Precio Base (USD)</label>
+                                    <input type="number" id="precioBase" class="form-input mt-1 w-full p-2 border border-gray-200 rounded-md bg-gray-100" readonly>
+                                </div>
+                                <div>
+                                    <label for="diferencial" class="block text-xs text-gray-600">Diferencial (%)</label>
+                                    <input type="number" id="diferencial" class="form-input mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="5">
+                                </div>
+                                <div>
+                                    <label for="precioFinal" class="block text-xs text-gray-600">Precio Venta Final (USD-BCV)</label>
+                                    <input type="number" id="precioFinal" class="form-input mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="140.35">
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- 4.4.3. Impuestos -->
+                        <fieldset class="border rounded-md p-4">
+                            <legend class="text-md font-medium text-gray-700 px-2">Impuestos</legend>
+                             <label class="flex items-center space-x-3 mt-2">
+                                <input type="checkbox" id="chkEsExento" class="dynamic-toggle h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500" data-target="#impuestosContent" data-invert="true">
+                                <span class="text-sm font-medium text-gray-700">Es Exento de Impuesto <span class="text-red-500">*</span></span>
+                            </label>
+                            
+                            <div id="impuestosContent" class="conditional-content mt-4 ml-8 space-y-4 visible">
+                                <div class="flex items-end space-x-2">
+                                    <div class="flex-grow">
+                                        <label for="tipoImpuesto" class="block text-xs text-gray-600">Tipo de Impuesto <span class="text-red-500">*</span></label>
+                                        <select id="tipoImpuesto" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-white">
+                                            <option>IVA General (16%)</option>
+                                            <option>IVA Reducido (8%)</option>
+                                            <option>-- Agregar/Gestionar Impuestos --</option>
+                                        </select>
+                                    </div>
+                                    <button class="p-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"><i class="fas fa-cog"></i></button>
+                                </div>
+                                <div>
+                                    <label for="impuestoAsignado" class="block text-xs text-gray-600">Impuesto Asignado (%)</label>
+                                    <input type="number" id="impuestoAsignado" value="16" class="form-input mt-1 w-full p-2 border border-gray-200 rounded-md bg-gray-100" readonly>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+
+                <!-- Sección 4.5: Gestor de Ofertas -->
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-4-5">
+                        <h3 class="text-lg font-semibold text-gray-900">5. Gestor de Ofertas y Descuentos</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-4-5" class="accordion-content p-6 border-t border-gray-200 space-y-6">
+                        <label class="flex items-center space-x-3">
+                            <input type="checkbox" id="chkEstaEnOferta" class="dynamic-toggle h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500" data-target="#ofertaContent">
+                            <span class="text-sm font-medium text-gray-700">¿Está en Oferta? <span class="text-red-500">*</span></span>
+                        </label>
+
+                        <!-- Formulario de Oferta (Condicional) -->
+                        <div id="ofertaContent" class="conditional-content ml-8 space-y-4 border rounded-md p-4 bg-gray-50">
+                            <h4 class="font-medium text-gray-800">Registrar Nueva Oferta</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="ofertaTipo" class="block text-xs text-gray-600">Tipo de Descuento <span class="text-red-500">*</span></label>
+                                    <select id="ofertaTipo" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-white">
+                                        <option value="Porcentaje (%)">Porcentaje (%)</option>
+                                        <option value="Monto Fijo (USD)">Monto Fijo (USD)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="ofertaValor" class="block text-xs text-gray-600">Valor del Descuento <span class="text-red-500">*</span></label>
+                                    <input type="number" id="ofertaValor" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="10">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label for="ofertaMotivo" class="block text-xs text-gray-600">Motivo <span class="text-orange-500">*</span></label>
+                                    <input type="text" id="ofertaMotivo" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Ej: Oferta de Verano">
+                                </div>
+                                <div>
+                                    <label for="ofertaInicio" class="block text-xs text-gray-600">Fecha de Inicio <span class="text-red-500">*</span></label>
+                                    <input type="datetime-local" id="ofertaInicio" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                                </div>
+                                <div>
+                                    <label for="ofertaFin" class="block text-xs text-gray-600">Fecha de Finalización <span class="text-red-500">*</span></label>
+                                    <input type="datetime-local" id="ofertaFin" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                                </div>
+                            </div>
+                            <button id="btnRegisterOffer" class="w-full px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700">
+                                <i class="fas fa-plus-circle mr-2"></i>Registrar Oferta
+                            </button>
+
+                            <!-- Lista de Ofertas Registradas (Corrección v1.4) -->
+                            <div class="mt-6">
+                                <h5 class="font-medium text-gray-800 mb-2">Ofertas Registradas</h5>
+                                <div id="offerListContainer" class="space-y-2">
+                                    <!-- Las ofertas se agregarán aquí dinámicamente -->
+                                    <p class="text-sm text-gray-500 italic" id="noOffersText">Aún no hay ofertas registradas.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sección 4.6: Multimedia -->
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-4-6">
+                        <h3 class="text-lg font-semibold text-gray-900">6. Multimedia (Imágenes)</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-4-6" class="accordion-content p-6 border-t border-gray-200">
+                        <!-- Zona de Carga -->
+                        <label for="imageUploadInput" id="imageUploadZone" class="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                            <div class="text-center">
+                                <i class="fas fa-cloud-upload-alt text-4xl text-gray-400"></i>
+                                <p class="mt-2 text-sm text-gray-600">Arrastra y suelta las imágenes aquí, o haz clic para seleccionar</p>
+                                <p class="text-xs text-gray-500">PNG, JPG, WEBP</p>
+                            </div>
+                            <input type="file" id="imageUploadInput" multiple accept="image/*" class="hidden">
+                        </label>
+                        
+                        <!-- Previsualización (Mejora v1.4 - Reordenar y Metadatos) -->
+                        <div class="mt-6">
+                            <h4 class="font-medium text-gray-800 mb-2">Previsualización (Arrastra para reordenar)</h4>
+                            <div id="imagePreviewContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                <!-- Las imágenes cargadas se agregarán aquí -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Sección 4.7: Atributos (Placeholder para Garantía) - ELIMINADA -->
+                <!--
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    ... (Sección 7 eliminada) ...
+                </div>
+                -->
+
+            </div>
+        </div>
+
+        <!-- 5. Vista: Ítem Compuesto (Combo) -->
+        <div id="itemComboView" class="hidden">
+            <div class="accordion-container space-y-2">
+
+                <!-- Sección 5.1: Datos Básicos (Combo) -->
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-5-1">
+                        <h3 class="text-lg font-semibold text-gray-900">1. Datos Básicos (Combo)</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-5-1" class="accordion-content p-6 border-t border-gray-200">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="md:col-span-2">
+                                <label for="combo_descripcion" class="block text-sm font-medium text-gray-700">Descripción (Combo) <span class="text-red-500">*</span></label>
+                                <input type="text" id="combo_descripcion" data-validation="obligatorio" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Ej: Combo PC Gamer Inicial">
+                            </div>
+                            <div>
+                                <label for="combo_sku" class="block text-sm font-medium text-gray-700">Referencia / SKU (Combo) <span class="text-red-500">*</span></label>
+                                <input type="text" id="combo_sku" data-validation="obligatorio" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            </div>
+                            <div>
+                                <label for="combo_proposito" class="block text-sm font-medium text-gray-700">Propósito del ítem <span class="text-red-500">*</span></label>
+                                <select id="combo_proposito" data-validation="obligatorio" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-white">
+                                    <option>Para la Venta</option>
+                                    <option>Uso Interno/Consumo</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Sección 4.6: Multimedia (para Combo) -->
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-combo-4-6">
+                        <h3 class="text-lg font-semibold text-gray-900">2. Multimedia (Imágenes del Combo)</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-combo-4-6" class="accordion-content p-6 border-t border-gray-200">
+                        <p class="text-sm text-gray-600">Utiliza la misma interfaz de carga y gestión de imágenes que el ítem simple (Sección 4.6).</p>
+                        <!-- Aquí se podría duplicar o referenciar la lógica de 4.6 -->
+                    </div>
+                </div>
+
+                <!-- Sección 5.2: Componentes del Combo -->
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-5-2">
+                        <h3 class="text-lg font-semibold text-gray-900">3. Componentes del Combo</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-5-2" class="accordion-content p-6 border-t border-gray-200 space-y-4">
+                        <div>
+                            <label for="combo_buscador" class="block text-sm font-medium text-gray-700">Buscador de Items (SKU o Descripción)</label>
+                            <input type="text" id="combo_buscador" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Buscar producto o servicio...">
+                        </div>
+                        <div class="max-h-60 overflow-y-auto border rounded-md p-2 bg-gray-50">
+                            <p class="text-sm text-gray-500 italic">Aquí iría la lista de componentes agregados...</p>
+                            <!-- Ejemplo de item en lista -->
+                            <div class="flex justify-between items-center p-2 bg-white rounded-md shadow-sm mt-2">
+                                <div>
+                                    <p class="font-medium">SKU-123: Monitor 24"</p>
+                                    <p class="text-xs text-gray-500">Costo: $150.00</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <label for="qty-1" class="text-sm">Cant:</label>
+                                    <input id="qty-1" type="number" value="1" class="w-16 p-1 border border-gray-300 rounded-md">
+                                    <button class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="w-full px-4 py-2 bg-green-600 text-white rounded-md shadow-sm hover:bg-green-700">
+                            <i class="fas fa-plus mr-2"></i>Crear Nuevo Item Rápido
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sección 5.3: Precios (Combo) -->
+                <div class="accordion-item border rounded-lg overflow-hidden shadow-sm">
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer bg-white" data-target="#content-5-3">
+                        <h3 class="text-lg font-semibold text-gray-900">4. Precios (Combo)</h3>
+                        <i class="fas fa-chevron-down chevron-icon text-gray-500"></i>
+                    </div>
+                    <div id="content-5-3" class="accordion-content p-6 border-t border-gray-200 space-y-6">
+                        <fieldset class="border rounded-md p-4">
+                            <legend class="text-md font-medium text-gray-700 px-2">Costo del Combo</legend>
+                            <div class="flex items-end space-x-2">
+                                <div class="flex-grow">
+                                    <label for="combo_costo" class="block text-xs text-gray-600">Costo (USD)</label>
+                                    <input type="number" id="combo_costo" class="form-input mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="0.00">
+                                </div>
+                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 whitespace-nowrap">
+                                    <i class="fas fa-calculator mr-1"></i> Calcular Costo
+                                </button>
+                            </div>
+                        </fieldset>
+                        <p class="text-sm text-gray-600">La lógica de **Precio de Venta (USD)** y **Precio Final (USD-BCV)** es idéntica a la del ítem simple (Sección 4.4).</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Botón de Registro Principal (AÑADIDO) -->
+        <div class="mt-8 flex justify-end">
+            <button id="btnRegistrarItem" class="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                <i class="fas fa-save mr-2"></i>Registrar Item
+            </button>
+        </div>
+
+    </div>
+    
+    <!-- Modal para Metadatos de Imagen (Mejora v1.4) -->
+    <div id="imageMetaModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Editar Metadatos de Imagen</h3>
+            <input type="hidden" id="currentImageId">
+            <div class="space-y-4">
+                <div>
+                    <label for="imageTitle" class="block text-sm font-medium text-gray-700">Título</label>
+                    <input type="text" id="imageTitle" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Ej: Vista Frontal">
+                </div>
+                <div>
+                    <label for="imageDescription" class="block text-sm font-medium text-gray-700">Descripción</label>
+                    <textarea id="imageDescription" rows="3" class="form-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Ej: Imagen con fondo blanco para catálogo"></textarea>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="cancelMeta" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancelar</button>
+                <button id="saveMeta" class="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700">Guardar Metadatos</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notificación Toast para Guardar (AÑADIDA) -->
+    <div id="toast-notification" class="toast-notification hidden">
+        <i class="fas fa-check-circle mr-2"></i>Item registrado. Revise la consola (F12).
+    </div>
+
+
+    <script type="module">
+        // --- SDK DE FIREBASE (MODULAR) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- CONSTANTES ---
+            const itemTypeSwitcher = document.getElementById('itemTypeSwitcher');
+            const itemSimpleView = document.getElementById('itemSimpleView');
+            const itemComboView = document.getElementById('itemComboView');
+            const sectionLogistica = document.getElementById('sectionLogistica');
+            const sectionTrazabilidad = document.getElementById('sectionTrazabilidad');
+            
+            // --- Conexión a Firebase ---
+            // IMPORTANTE: Reemplaza estos valores con los de tu proyecto de Firebase.
+            const firebaseConfig = {
+                apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+                authDomain: "sistema-productividad-equipo.firebaseapp.com",
+                projectId: "sistema-productividad-equipo",
+                storageBucket: "sistema-productividad-equipo.appspot.com",
+                messagingSenderId: "196802708765",
+                appId: "YOUR_APP_ID" // <-- AÚN NECESITAS AGREGAR ESTE VALOR
+            };
+
+            let db;
+            try {
+                // Evitar reinicialización
+                if (!window.firebaseApp) {
+                    window.firebaseApp = initializeApp(firebaseConfig);
+                }
+                db = getFirestore(window.firebaseApp);
+                console.log("Firebase inicializado correctamente.");
+            } catch (error) {
+                console.error("Error al inicializar Firebase:", error);
+                const toast = document.getElementById('toast-notification');
+                toast.innerHTML = '<i class="fas fa-times-circle mr-2"></i>Error: Revisa la configuración de Firebase.';
+                toast.style.backgroundColor = '#ef4444'; // Rojo
+                toast.classList.remove('hidden');
+            }
+
+            // --- LÓGICA DE ACORDEÓN ---
+            const accordionHeaders = document.querySelectorAll('.accordion-header');
+            
+            function closeAccordionPanel(content) {
+                if (content.previousElementSibling) {
+                    content.previousElementSibling.classList.remove('active');
+                }
+                content.style.maxHeight = null;
+                content.classList.remove('open');
+            }
+
+            function openAccordionPanel(header, content) {
+                header.classList.add('active');
+                content.classList.add('open');
+                content.style.maxHeight = content.scrollHeight + 'px';
+            }
+
+            accordionHeaders.forEach(header => {
+                header.addEventListener('click', () => {
+                    const content = document.getElementById(header.dataset.target.substring(1));
+                    if (!content) return;
+                    const isOpen = content.classList.contains('open');
+                    const accordionContainer = header.closest('.accordion-container');
+                    accordionContainer.querySelectorAll('.accordion-content.open').forEach(closeAccordionPanel);
+                    if (!isOpen) {
+                        openAccordionPanel(header, content);
+                    }
+                });
+            });
+            
+            function recalculateAccordionHeight(elementInside) {
+                const openAccordionContent = elementInside.closest('.accordion-content.open');
+                if (openAccordionContent) {
+                    openAccordionContent.style.maxHeight = openAccordionContent.scrollHeight + 'px';
+                }
+            }
+
+            // --- LÓGICA DE TOGGLE DINÁMICO ---
+            document.querySelectorAll('.dynamic-toggle').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    const targetElement = document.querySelector(checkbox.dataset.target);
+                    if (targetElement) {
+                        const shouldBeVisible = checkbox.dataset.invert ? !checkbox.checked : checkbox.checked;
+                        targetElement.classList.toggle('visible', shouldBeVisible);
+                        recalculateAccordionHeight(checkbox);
+                    }
+                });
+                if (checkbox.dataset.invert) checkbox.dispatchEvent(new Event('change'));
+            });
+
+            // --- LÓGICA DE CAMBIO DE VISTA ---
+            itemTypeSwitcher.addEventListener('change', (e) => {
+                const type = e.target.value;
+                itemSimpleView.classList.add('hidden');
+                itemComboView.classList.add('hidden');
+                document.querySelectorAll('.accordion-content.open').forEach(closeAccordionPanel);
+
+                if (type === 'producto' || type === 'servicio') {
+                    itemSimpleView.classList.remove('hidden');
+                    sectionLogistica.style.display = type === 'producto' ? 'block' : 'none';
+                    sectionTrazabilidad.style.display = type === 'producto' ? 'block' : 'none';
+                } else if (type === 'combo') {
+                    itemComboView.classList.remove('hidden');
+                }
+                
+                const firstHeader = (type === 'combo' ? itemComboView : itemSimpleView).querySelector('.accordion-header');
+                if(firstHeader) {
+                    const firstContent = document.getElementById(firstHeader.dataset.target.substring(1));
+                    if(firstContent) openAccordionPanel(firstHeader, firstContent);
+                }
+            });
+
+            // --- LÓGICA DE PRECIOS ---
+            const [costo, utilidad, precioVenta, precioBase, diferencial, precioFinal] = 
+                ['costo', 'utilidad', 'precioVenta', 'precioBase', 'diferencial', 'precioFinal'].map(id => document.getElementById(id));
+
+            function formatNumber(num) {
+                return isNaN(num) || !isFinite(num) || num === 0 ? '' : parseFloat(num.toFixed(2));
+            }
+
+            function updateFinalPrice() {
+                const pv = parseFloat(precioVenta.value) || 0;
+                const d = parseFloat(diferencial.value) || 0;
+                precioFinal.value = (pv > 0 && d > 0 && d < 100) ? formatNumber(pv / (1 - d / 100)) : formatNumber(pv);
+            }
+
+            costo.addEventListener('input', () => {
+                const c = parseFloat(costo.value) || 0;
+                const u = parseFloat(utilidad.value) || 0;
+                if (c > 0 && u > 0 && u < 100) {
+                    precioVenta.value = formatNumber(c / (1 - u / 100));
+                    precioVenta.dispatchEvent(new Event('input'));
+                }
+            });
+
+            utilidad.addEventListener('input', () => costo.dispatchEvent(new Event('input')));
+
+            precioVenta.addEventListener('input', () => {
+                const c = parseFloat(costo.value) || 0;
+                const pv = parseFloat(precioVenta.value) || 0;
+                if (c > 0 && pv > c) utilidad.value = formatNumber(((pv - c) / pv) * 100);
+                precioBase.value = formatNumber(pv);
+                updateFinalPrice();
+            });
+
+            diferencial.addEventListener('input', updateFinalPrice);
+
+            precioFinal.addEventListener('input', () => {
+                const pb = parseFloat(precioBase.value) || 0;
+                const pf = parseFloat(precioFinal.value) || 0;
+                if (pb > 0 && pf > pb) diferencial.value = formatNumber(((pf - pb) / pf) * 100);
+            });
+
+            // --- GESTOR DE OFERTAS ---
+            const btnRegisterOffer = document.getElementById('btnRegisterOffer');
+            const offerListContainer = document.getElementById('offerListContainer');
+            const noOffersText = document.getElementById('noOffersText');
+
+            btnRegisterOffer.addEventListener('click', () => {
+                const tipo = document.getElementById('ofertaTipo').value;
+                const valor = document.getElementById('ofertaValor').value;
+                const motivo = document.getElementById('ofertaMotivo').value;
+                const inicio = document.getElementById('ofertaInicio').value;
+                const fin = document.getElementById('ofertaFin').value;
+                
+                if (!valor || !motivo || !inicio || !fin) {
+                    // Simulación de alerta
+                    alert("Por favor, complete todos los campos de la oferta.");
+                    return;
+                }
+                
+                // Ocultar texto de "no hay ofertas"
+                if (noOffersText) {
+                    noOffersText.style.display = 'none';
+                }
+
+                // (Corrección v1.4): Usar datos reales, no placeholders
+                const offerHTML = `
+                    <div class="offer-list-item flex justify-between items-center p-3 bg-white rounded-md shadow-sm border">
+                        <div class="flex flex-col">
+                            <strong class="text-sm font-medium text-gray-900">${motivo}</strong>
+                            <span class="text-sm text-gray-600">${valor} (${tipo})</span>
+                            <span class="text-xs text-gray-500">${new Date(inicio).toLocaleString()} - ${new Date(fin).toLocaleString()}</span>
+                        </div>
+                        <div class="space-x-2">
+                            <button class="edit-offer p-2 text-blue-600 hover:text-blue-800"><i class="fas fa-pen"></i></button>
+                            <button class="delete-offer p-2 text-red-600 hover:text-red-800"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+                
+                offerListContainer.insertAdjacentHTML('beforeend', offerHTML);
+                
+                // Limpiar formulario (opcional)
+                document.getElementById('ofertaValor').value = '';
+                document.getElementById('ofertaMotivo').value = '';
+
+                // Recalcular altura del acordeón
+                recalculateAccordionHeight(btnRegisterOffer);
+            });
+            
+            // --- MULTIMEDIA (v1.4 Mejoras 3 y 4 con Eliminar/Archivar) ---
+            const [imageUploadZone, imageUploadInput, imagePreviewContainer, imageMetaModal, saveMeta, cancelMeta, currentImageIdInput] =
+                ['imageUploadZone', 'imageUploadInput', 'imagePreviewContainer', 'imageMetaModal', 'saveMeta', 'cancelMeta', 'currentImageId'].map(id => document.getElementById(id));
+            
+            let imageMetadata = {};
+            let imageState = {};
+
+            new Sortable(imagePreviewContainer, { animation: 150, ghostClass: 'sortable-ghost' });
+            
+            imageUploadZone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); imageUploadZone.classList.add('bg-gray-100'); });
+            imageUploadZone.addEventListener('dragleave', e => { e.preventDefault(); e.stopPropagation(); imageUploadZone.classList.remove('bg-gray-100'); });
+            imageUploadZone.addEventListener('drop', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                imageUploadZone.classList.remove('bg-gray-100');
+                if (e.dataTransfer.files.length) {
+                    imageUploadInput.files = e.dataTransfer.files;
+                    handleFiles(imageUploadInput.files);
+                }
+            });
+            imageUploadInput.addEventListener('change', e => { if (e.target.files.length) handleFiles(e.target.files); });
+
+            function handleFiles(files) {
+                for (const file of files) {
+                    if (!file.type.startsWith('image/')) continue;
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        const dataUrl = e.target.result;
+                        const imageId = 'img-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+                        imageMetadata[imageId] = { title: '', description: '', dataUrl: dataUrl };
+                        imageState[imageId] = { archived: false };
+                        imagePreviewContainer.insertAdjacentHTML('beforeend', `
+                            <div class="image-preview-item group aspect-square" data-id="${imageId}">
+                                <img src="${dataUrl}" alt="Previsualización" class="w-full h-full object-cover rounded-lg">
+                                <div class="action-buttons">
+                                    <button class="action-btn edit-btn" title="Editar Metadatos" data-id="${imageId}"><i class="fas fa-pen text-xs"></i></button>
+                                    <button class="action-btn archive-btn" title="Archivar" data-id="${imageId}"><i class="fas fa-box-archive text-xs"></i></button>
+                                    <button class="action-btn delete-btn" title="Eliminar" data-id="${imageId}"><i class="fas fa-trash text-xs"></i></button>
+                                </div>
+                                <div class="archive-overlay" data-id="${imageId}">
+                                    <i class="fas fa-box-open text-2xl text-gray-700"></i>
+                                    <p class="text-sm font-semibold text-gray-700 mt-1">Desarchivar</p>
+                                </div>
+                            </div>`);
+                    };
+                    reader.readAsDataURL(file);
+                }
+                setTimeout(() => recalculateAccordionHeight(imagePreviewContainer), 100);
+            }
+
+            imagePreviewContainer.addEventListener('click', e => {
+                const target = e.target.closest('button, .archive-overlay');
+                if (!target) return;
+                const imageId = target.dataset.id;
+                const imageElement = document.querySelector(`.image-preview-item[data-id="${imageId}"]`);
+                if (!imageElement) return;
+
+                if (target.classList.contains('edit-btn')) {
+                    currentImageIdInput.value = imageId;
+                    const meta = imageMetadata[imageId] || { title: '', description: '' };
+                    document.getElementById('imageTitle').value = meta.title;
+                    document.getElementById('imageDescription').value = meta.description;
+                    imageMetaModal.classList.remove('hidden');
+                } else if (target.classList.contains('archive-btn')) {
+                    imageState[imageId].archived = true;
+                    imageElement.classList.add('archived');
+                } else if (target.classList.contains('archive-overlay')) {
+                    imageState[imageId].archived = false;
+                    imageElement.classList.remove('archived');
+                } else if (target.classList.contains('delete-btn')) {
+                    if (confirm('¿Seguro que quieres eliminar esta imagen?')) {
+                        delete imageMetadata[imageId];
+                        delete imageState[imageId];
+                        imageElement.remove();
+                    }
+                }
+            });
+
+            saveMeta.addEventListener('click', () => {
+                const imageId = currentImageIdInput.value;
+                if (imageId && imageMetadata[imageId]) {
+                    imageMetadata[imageId].title = document.getElementById('imageTitle').value;
+                    imageMetadata[imageId].description = document.getElementById('imageDescription').value;
+                    imageMetaModal.classList.add('hidden');
+                }
+            });
+            cancelMeta.addEventListener('click', () => imageMetaModal.classList.add('hidden'));
+
+            // --- LÓGICA DE REGISTRO ---
+            const btnRegistrarItem = document.getElementById('btnRegistrarItem');
+            btnRegistrarItem.addEventListener('click', async () => {
+                const itemData = {};
+                const toast = document.getElementById('toast-notification');
+                
+                // Recolectar datos
+                itemData.tipo = itemTypeSwitcher.value;
+                if (itemData.tipo === 'producto' || itemData.tipo === 'servicio') {
+                    itemData.descripcion = document.getElementById('descripcion').value;
+                    itemData.sku = document.getElementById('sku').value;
+                    itemData.marca = document.getElementById('marca').value;
+                    itemData.modelo = document.getElementById('modelo').value;
+                    itemData.proposito = document.getElementById('proposito').value;
+                    
+                    // 2. Precios
+                    itemData.costo = parseFloat(document.getElementById('costo').value) || 0;
+                    itemData.utilidad_porc = parseFloat(document.getElementById('utilidad').value) || 0;
+                    itemData.precio_venta_usd = parseFloat(document.getElementById('precioVenta').value) || 0;
+                    itemData.diferencial_porc = parseFloat(document.getElementById('diferencial').value) || 0;
+                    itemData.precio_final_bcv = parseFloat(document.getElementById('precioFinal').value) || 0;
+                    
+                    // 3. Impuestos
+                    itemData.es_exento = document.getElementById('chkEsExento').checked;
+                    if (!itemData.es_exento) {
+                        itemData.impuesto_nombre = document.getElementById('tipoImpuesto').value;
+                        itemData.impuesto_porc = parseFloat(document.getElementById('impuestoAsignado').value) || 0;
+                    }
+
+                    // 4. Multimedia (Metadatos y Estado)
+                    const imageOrder = Array.from(imagePreviewContainer.querySelectorAll('.image-preview-item')).map(el => el.dataset.id);
+                    
+                    itemData.multimedia = imageOrder.map(id => ({
+                        id,
+                        ...imageMetadata[id],
+                        archived: imageState[id]?.archived || false
+                    }));
+                    
+                    // ... (recolectar todos los demás campos)
+                    
+                } else if (itemData.tipo === 'combo') {
+                    // Recolectar datos del combo
+                    itemData.descripcion = document.getElementById('combo_descripcion').value;
+                    itemData.sku = document.getElementById('combo_sku').value;
+                    // ... (recolectar componentes y precios del combo)
+                }
+
+                console.log("--- ITEM A REGISTRAR ---");
+                console.log(JSON.stringify(itemData, null, 2));
+
+                // Guardar en Firestore
+                try {
+                    if (!db) throw new Error("La base de datos no está inicializada.");
+                    btnRegistrarItem.disabled = true;
+                    btnRegistrarItem.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registrando...';
+                    
+                    const docRef = await addDoc(collection(db, "items"), itemData);
+                    
+                    toast.innerHTML = `<i class="fas fa-check-circle mr-2"></i>Item registrado con éxito (ID: ${docRef.id}).`;
+                    toast.style.backgroundColor = '#22c55e';
+                } catch (error) {
+                    console.error("Error al agregar el documento: ", error);
+                    let msg = "Error al registrar el item.";
+                    if (error.message.includes("quota")) msg = "Error: La imagen es muy grande (Máx 1MB).";
+                    else if (error.message.includes("permission-denied")) msg = "Error: Permiso denegado.";
+                    else if (error.message.includes("inicializada")) msg = "Error: Revisa la config. de Firebase.";
+                    toast.innerHTML = `<i class="fas fa-times-circle mr-2"></i>${msg}`;
+                    toast.style.backgroundColor = '#ef4444';
+                } finally {
+                    toast.classList.remove('hidden');
+                    btnRegistrarItem.disabled = false;
+                    btnRegistrarItem.innerHTML = '<i class="fas fa-save mr-2"></i>Registrar Item';
+                    setTimeout(() => toast.classList.add('hidden'), 5000);
+                }
+            });
+
+            // --- INICIALIZACIÓN ---
+            itemTypeSwitcher.dispatchEvent(new Event('change'));
+        });
+    </script>
+
+</body>
+</html>
+

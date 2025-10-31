@@ -67,9 +67,8 @@
                 <h1 class="text-xl font-bold text-gray-800">Módulo de Clientes</h1>
                 <div class="flex items-center gap-3">
                      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                    <select id="user-select" class="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 font-medium">
-                        <option value="">Seleccione su usuario...</option>
-                    </select>
+                    <span id="current-user-name" class="text-sm text-gray-700 font-medium">Sin sesión</span>
+                    <button id="clients-help-request-open" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-md text-sm">Solicitar ayuda</button>
                 </div>
             </div>
         </div>
@@ -91,6 +90,7 @@
                     <tbody id="clientListTableBody"></tbody>
                 </table>
             </div>
+            <div id="client-pagination" class="mt-3 flex items-center justify-end"></div>
         </div>
 
         <!-- VISTA DE FORMULARIO (OCULTA POR DEFECTO) -->
@@ -183,13 +183,42 @@
     <div id="alertModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50"><div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-sm transform scale-95" onclick="event.stopPropagation()"><div class="p-6 text-center"><svg class="mx-auto mb-4 h-14 w-14 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg><h3 id="alertModalTitle" class="mb-5 text-lg font-semibold text-gray-800">Acción no permitida</h3><p id="alertModalMessage" class="mb-6 text-sm text-gray-500">El elemento seleccionado está en uso y no puede ser eliminado.</p><div class="flex justify-center gap-4"><button id="alertModalOkBtn" class="px-8 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none">Entendido</button></div></div></div></div>
     <div id="successModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50"><div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-sm transform scale-95" onclick="event.stopPropagation()"><div class="p-6 text-center"><svg class="mx-auto mb-4 h-14 w-14 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><h3 id="successModalTitle" class="mb-5 text-lg font-semibold text-gray-800">¡Éxito!</h3><p id="successModalMessage" class="mb-6 text-sm text-gray-500">La operación se completó correctamente.</p><div class="flex justify-center gap-4"><button id="successModalOkBtn" class="px-8 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none">Aceptar</button></div></div></div></div>
     <div id="photoViewerModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden z-50" onclick="closeModal('photoViewerModal')"><div class="modal-content relative transform scale-95" onclick="event.stopPropagation()"><img id="fullSizeImage" src="" alt="Foto del Cliente" class="max-w-[90vw] max-h-[80vh] rounded-lg shadow-lg"><button onclick="closeModal('photoViewerModal')" class="absolute -top-4 -right-4 bg-white text-gray-800 rounded-full p-2 hover:bg-gray-200 transition"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button></div></div>
+
+    <!-- Modal Solicitar Ayuda (Clientes) -->
+    <div id="clients-help-request-modal" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50" onclick="closeClientsHelpModal()">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-lg transform scale-95" onclick="event.stopPropagation()">
+            <div class="p-6">
+                <h3 class="text-xl font-semibold text-gray-900 mb-2">Solicitar ayuda</h3>
+                <p class="text-gray-600 mb-3">Describe brevemente en qué necesitas apoyo dentro del módulo de clientes.</p>
+                <div class="text-sm text-gray-700 mb-3">
+                    <div><span class="font-medium">Ámbito:</span> Clientes</div>
+                    <div id="clients-help-context" class="truncate text-gray-600"></div>
+                </div>
+                <textarea id="clients-help-description" rows="4" class="w-full border rounded-md p-3" placeholder="Ej: No entiendo cómo registrar un RIF especial, etc."></textarea>
+                <div class="mt-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Adjuntos (imágenes o videos)</label>
+                    <input id="clients-help-files" type="file" multiple accept="image/*,video/*" class="block w-full text-sm" />
+                    <div id="clients-help-files-list" class="mt-2 text-xs text-gray-600"></div>
+                    <div id="clients-help-files-progress" class="mt-1 text-xs text-gray-500"></div>
+                </div>
+                <div class="mt-4 flex justify-end gap-2">
+                    <button class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300" onclick="closeClientsHelpModal()">Cancelar</button>
+                    <button class="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700" onclick="submitClientsHelpRequest()">Enviar solicitud</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
 <script>
     const firebaseConfig = { apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A", authDomain: "sistema-productividad-equipo.firebaseapp.com", projectId: "sistema-productividad-equipo", storageBucket: "sistema-productividad-equipo.appspot.com", messagingSenderId: "196802708765", appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+    const storage = firebase.storage();
+    const helpRequestsCol = db.collection('help_requests');
     const employeesCol = db.collection('employees');
     const clientsCol = db.collection('clients');
     const clientTypesCol = db.collection('client_types');
@@ -206,29 +235,130 @@
     let itemToDelete = { type: null, id: null };
     let currentlyEditing = { type: null, id: null };
     let fiscalAddressCounter = 1;
+    // Estado de tabla: filtro y paginación
+    const CLIENTS_PAGE_SIZE = 6;
+    let clientsPage = 1;
+    let clientsSearch = '';
 
     document.addEventListener('DOMContentLoaded', async () => {
-        const userSelect = document.getElementById('user-select');
         const mainContent = document.getElementById('main-content');
+        const currentUserNameEl = document.getElementById('current-user-name');
+        let initialized = false;
+        const applyUser = async (uid) => {
+            currentUserId = uid || null;
+            if (currentUserId) {
+                // Asegurar que tenemos el nombre
+                if (!employeesMap[currentUserId]){
+                    try { const doc = await employeesCol.doc(currentUserId).get(); if (doc.exists) employeesMap[currentUserId] = doc.data(); } catch(e){}
+                }
+                if (currentUserNameEl) currentUserNameEl.textContent = employeesMap[currentUserId]?.name || 'Usuario';
+                mainContent.classList.remove('disabled');
+                if (!initialized){ initialized = true; initializeDataListeners(); }
+            } else {
+                if (currentUserNameEl) currentUserNameEl.textContent = 'Sin sesión';
+                mainContent.classList.add('disabled');
+            }
+        };
         try {
             const employeesSnap = await employeesCol.where('is_active', '==', true).get();
-            employeesSnap.docs.forEach(doc => {
-                employeesMap[doc.id] = doc.data();
-                const option = new Option(doc.data().name, doc.id);
-                userSelect.add(option);
-            });
+            employeesSnap.docs.forEach(doc => { employeesMap[doc.id] = doc.data(); });
         } catch(e) { console.error("Error loading employees", e); document.getElementById('loading-text').textContent = 'Error al cargar usuarios.'; return; }
-        userSelect.addEventListener('change', () => { currentUserId = userSelect.value; if (currentUserId) { mainContent.classList.remove('disabled'); initializeDataListeners(); } else { mainContent.classList.add('disabled'); } });
         document.getElementById('loading-overlay').style.display = 'none';
         document.getElementById('confirmDeleteBtn').addEventListener('click', performDelete);
         document.getElementById('cancelDeleteBtn').addEventListener('click', () => closeModal('confirmDeleteModal'));
         document.getElementById('alertModalOkBtn').addEventListener('click', () => closeModal('alertModal'));
-        document.getElementById('successModalOkBtn').addEventListener('click', () => { closeModal('successModal'); switchView('list'); });
-        document.getElementById('searchInput').addEventListener('input', e => { const searchTerm = e.target.value.toLowerCase(); const filteredClients = localClientsCache.filter(c => c.companyName.toLowerCase().includes(searchTerm) || c.rif.toLowerCase().includes(searchTerm)); renderClientList(filteredClients); });
+    document.getElementById('successModalOkBtn').addEventListener('click', () => { closeModal('successModal'); switchView('list'); });
+    document.getElementById('searchInput').addEventListener('input', e => { clientsSearch = (e.target.value||'').toLowerCase(); clientsPage = 1; renderClientList(); });
         document.getElementById('clientType').addEventListener('change', updateRifPrefix);
         document.getElementById('useSameAddress').addEventListener('change', function() { const shippingAddress = document.getElementById('shippingAddress'); if (this.checked) { const mainAddressRadio = document.querySelector('input[name="mainAddress"]:checked'); let mainAddressText = mainAddressRadio ? mainAddressRadio.closest('.fiscal-address-item').querySelector('textarea').value : ''; shippingAddress.value = mainAddressText; shippingAddress.readOnly = true; shippingAddress.classList.add('bg-gray-100'); } else { shippingAddress.value = ''; shippingAddress.readOnly = false; shippingAddress.classList.remove('bg-gray-100'); } });
         document.getElementById('useMainContactInfo').addEventListener('change', function() { const firstContact = document.querySelector('#contactPeopleContainer .contact-person-item'); if (!firstContact) return; const [nameInput, phoneInput] = firstContact.querySelectorAll('input'); if (this.checked) { nameInput.value = document.getElementById('companyName').value; const firstPhone = document.querySelector('#phonesContainer .phone-item input[name="phone[]"]'); phoneInput.value = firstPhone ? firstPhone.value : ''; nameInput.readOnly = true; phoneInput.readOnly = true; nameInput.classList.add('bg-gray-100'); phoneInput.classList.add('bg-gray-100'); } else { nameInput.value = ''; phoneInput.value = ''; nameInput.readOnly = false; phoneInput.readOnly = false; nameInput.classList.remove('bg-gray-100'); phoneInput.classList.remove('bg-gray-100'); } });
+        // Abrir modal de ayuda desde header
+        document.getElementById('clients-help-request-open').addEventListener('click', () => {
+            openClientsHelpModal();
+        });
+        // Escuchar contexto enviado por el host (esqueleto) para asignar usuario automáticamente
+        window.addEventListener('message', async (ev) => {
+            try {
+                const payload = ev.data || {};
+                if (payload.type === 'hostAuthReady') {
+                    const appUserId = payload.appUser && payload.appUser.id;
+                    if (appUserId) {
+                        applyUser(appUserId);
+                    } else {
+                        // Logout en host
+                        applyUser(null);
+                    }
+                }
+            } catch (e) { console.warn('Error procesando mensaje host en Clientes:', e); }
+        });
+        // Si por alguna razón el host no envía contexto al cargar, solicitarlo
+        try { parent && parent.postMessage({ type:'requestHostAuth' }, '*'); } catch(e){}
     });
+
+    function openClientsHelpModal(){
+        const currentId = document.getElementById('currentClientId')?.value || '';
+        const name = document.getElementById('companyName')?.value || '';
+        const ctx = currentId ? `Cliente: ${name || '(sin nombre)'} · ID: ${currentId}` : 'General (sin cliente seleccionado)';
+        const ctxEl = document.getElementById('clients-help-context');
+        if (ctxEl) ctxEl.textContent = ctx;
+        const modal = document.getElementById('clients-help-request-modal');
+        modal.classList.remove('hidden');
+        void modal.offsetWidth; modal.classList.add('opacity-100');
+    }
+    function closeClientsHelpModal(){
+        const modal = document.getElementById('clients-help-request-modal');
+        if (!modal) return;
+        modal.classList.remove('opacity-100');
+        setTimeout(()=> modal.classList.add('hidden'), 200);
+    }
+    async function submitClientsHelpRequest(){
+        const description = (document.getElementById('clients-help-description').value||'').trim();
+    if (!description) { showAlertDialog('Descripción requerida', 'Por favor describe tu solicitud de ayuda.'); return; }
+    if (!currentUserId) { showAlertDialog('Sesión requerida', 'Inicia sesión para enviar la solicitud.'); return; }
+        const currentId = document.getElementById('currentClientId')?.value || null;
+        const name = document.getElementById('companyName')?.value || null;
+        const employeeName = employeesMap[currentUserId]?.name || 'Usuario';
+            // Subir adjuntos si existen
+            const files = Array.from(document.getElementById('clients-help-files')?.files||[]);
+            const attachProg = document.getElementById('clients-help-files-progress');
+            const attachments = [];
+            for (const f of files){
+                try{
+                    if (attachProg) attachProg.textContent = `Subiendo ${f.name}...`;
+                    const safe = (f.name||'archivo').replace(/[^a-zA-Z0-9-_\.]/g,'_');
+                    const base = currentId || 'general';
+                    const path = `help_requests/clients/${base}/${Date.now()}-${safe}`;
+                    const ref = storage.ref().child(path);
+                    await ref.put(f);
+                    const url = await ref.getDownloadURL();
+                    attachments.push({ url, name: f.name, contentType: f.type||null, size: f.size||null, addedAtMs: Date.now() });
+                }catch(err){ console.error('Error subiendo adjunto (clientes)', err); showAlertDialog('Adjunto', 'No se pudo subir un adjunto.'); }
+            }
+            if (attachProg) attachProg.textContent = '';
+        const payload = {
+            description,
+            scope: 'clients',
+            scope_id: currentId || null,
+            scope_name: name || null,
+            status: 'Solicitado',
+            created_at: firebase.firestore.FieldValue.serverTimestamp(),
+            requesting_employee_id: currentUserId,
+            requesting_employee_name: employeeName,
+                source: 'clients_admin_panel',
+                attachments
+        };
+        try{
+            await helpRequestsCol.add(payload);
+            closeClientsHelpModal();
+            document.getElementById('clients-help-description').value = '';
+                const filesInput = document.getElementById('clients-help-files'); if (filesInput) filesInput.value='';
+                const listEl = document.getElementById('clients-help-files-list'); if (listEl) listEl.innerHTML='';
+            showSuccessModal('Solicitud de ayuda enviada.');
+        }catch(err){
+            console.error('Error enviando solicitud de ayuda (clientes)', err);
+            showAlertDialog('Error', 'No se pudo enviar la solicitud.');
+        }
+    }
 
     function initializeDataListeners() {
         switchView('list');
@@ -257,14 +387,42 @@
         }
     }
     
-    function renderClientList(clientList = localClientsCache) {
+    function renderPagination(containerId, current, total, count, pageSize){
+        const host = document.getElementById(containerId);
+        if (!host) return;
+        if (total <= 1){ host.innerHTML = ''; return; }
+        const btn = (label, page, disabled=false, active=false) => `<button data-page="${page}" class="px-2 py-1 rounded ${active? 'bg-cyan-600 text-white':'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${disabled? 'opacity-50 cursor-not-allowed':''}" ${disabled? 'disabled':''}>${label}</button>`;
+        let html = '<div class="w-full flex items-center justify-between text-sm">'
+            + `<div class="text-gray-500">${Math.min((current-1)*pageSize+1, count)}–${Math.min(current*pageSize, count)} de ${count}</div>`
+            + '<div class="flex items-center gap-1">'
+            + btn('«', 1, current===1)
+            + btn('‹', current-1, current===1);
+        const windowSize = 5; const start = Math.max(1, current - Math.floor(windowSize/2)); const end = Math.min(total, start + windowSize - 1);
+        for (let p=start; p<=end; p++) html += btn(p, p, false, p===current);
+        html += btn('›', current+1, current===total) + btn('»', total, current===total) + '</div></div>';
+        host.innerHTML = html;
+        host.querySelectorAll('button[data-page]')?.forEach(b=> b.addEventListener('click', ()=>{ const p = parseInt(b.getAttribute('data-page'),10); if (!isNaN(p)){ clientsPage = p; renderClientList(); } }));
+    }
+
+    function renderClientList() {
         const tableBody = document.getElementById('clientListTableBody');
-        if (clientList.length === 0) {
+        const filtered = (localClientsCache||[]).filter(c => {
+            if (!clientsSearch) return true;
+            const name = (c.companyName||'').toLowerCase();
+            const rif = (c.rif||'').toLowerCase();
+            return name.includes(clientsSearch) || rif.includes(clientsSearch);
+        });
+        if (filtered.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500">No se encontraron clientes.</td></tr>';
+            document.getElementById('client-pagination').innerHTML = '';
             return;
         }
+        const totalPages = Math.max(1, Math.ceil(filtered.length / CLIENTS_PAGE_SIZE));
+        if (clientsPage > totalPages) clientsPage = totalPages;
+        const start = (clientsPage - 1) * CLIENTS_PAGE_SIZE;
+        const pageItems = filtered.slice(start, start + CLIENTS_PAGE_SIZE);
         
-        tableBody.innerHTML = clientList.map(client => {
+        tableBody.innerHTML = pageItems.map(client => {
             const clientType = dataMap.client_types.data.find(ct => ct.id === client.clientTypeId)?.text || 'N/A';
             let photoHtml = '';
             if (client.photoUrl && client.photoUrl !== '#') {
@@ -288,6 +446,7 @@
                 </tr>
             `;
         }).join('');
+        renderPagination('client-pagination', clientsPage, totalPages, filtered.length, CLIENTS_PAGE_SIZE);
     }
 
     function updateRifPrefix() { const clientTypeId = document.getElementById('clientType').value; const type = dataMap.client_types.data.find(t => t.id === clientTypeId); document.getElementById('rifPrefix').textContent = type?.rifPrefix || '-'; }
@@ -597,6 +756,38 @@
     function closeCamera() { if (stream) { stream.getTracks().forEach(track => track.stop()); } cameraModal.classList.add('hidden'); cameraModal.classList.remove('flex'); }
     document.getElementById('clientPhoto').addEventListener('change', function(event) { const file = event.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = function(e) { document.getElementById('imagePreview').src = e.target.result; document.getElementById('imagePreviewContainer').classList.remove('hidden'); document.getElementById('imageUploadBox').classList.add('hidden'); document.getElementById('imageFileName').textContent = file.name; }; reader.readAsDataURL(file); } });
     function removeImage() { document.getElementById('imagePreview').src = "#"; document.getElementById('clientPhoto').value = ""; document.getElementById('imagePreviewContainer').classList.add('hidden'); document.getElementById('imageUploadBox').classList.remove('hidden'); document.getElementById('imageFileName').textContent = ""; }
+
+    // Escuchar contexto enviado por el host (esqueleto) para auto-seleccionar el usuario autenticado
+    window.addEventListener('message', async (ev) => {
+        try {
+            const payload = ev.data || {};
+            if (payload.type === 'hostAuthReady' && payload.appUser && payload.appUser.id) {
+                const appUserId = payload.appUser.id;
+                const userSelectEl = document.getElementById('user-select');
+                if (!userSelectEl) return;
+                // Si la opción ya existe, seleccionar y disparar change
+                const existing = Array.from(userSelectEl.options).find(o => o.value === appUserId);
+                if (existing) {
+                    userSelectEl.value = appUserId;
+                    userSelectEl.dispatchEvent(new Event('change'));
+                    return;
+                }
+                // Si no existe, intentar cargar documento del empleado y agregar la opción
+                try {
+                    const doc = await employeesCol.doc(appUserId).get();
+                    if (doc.exists) {
+                        const data = doc.data();
+                        const opt = new Option(data.name || 'Usuario', appUserId);
+                        userSelectEl.append(opt);
+                        userSelectEl.value = appUserId;
+                        userSelectEl.dispatchEvent(new Event('change'));
+                    }
+                } catch (e) {
+                    console.warn('No se pudo auto-seleccionar el usuario desde el host:', e);
+                }
+            }
+        } catch (e) { console.warn('Error procesando mensaje host en Clientes:', e); }
+    });
 </script>
 </body>
 </html>

@@ -1,0 +1,774 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión de Ítems</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .form-section { display: block; }
+
+        /* Estilos combobox */
+        .combobox-options { display: none; position: absolute; z-index: 10; width: 100%; background-color: white; border: 1px solid #d1d5db; border-radius: 0.375rem; margin-top: 0.25rem; max-height: 15rem; overflow-y: auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .combobox-options.visible { display: block; }
+        .combobox-option { padding: 0.5rem 0.75rem; cursor: pointer; }
+        .combobox-option:hover, .combobox-option.highlighted { background-color: #eff6ff; }
+        .create-option { color: #2563eb; font-style: italic; }
+
+        /* Estilos imágenes */
+        .image-preview-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .image-preview-item { position: relative; border: 2px solid transparent; border-radius: 0.5rem; overflow: hidden; cursor: pointer; }
+        .image-preview-item img { width: 100%; height: 100px; object-fit: cover; }
+        .image-preview-item .radio-overlay { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; background-color: #ccc; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .image-preview-item.selected .radio-overlay { background-color: #3b82f6; }
+
+        input:disabled, select:disabled { background-color: #e5e7eb; cursor: not-allowed; color: #6b7280; }
+        .optional-label::after { content: '(Opcional)'; font-size: 0.75rem; color: #6b7280; margin-left: 0.25rem; }
+
+        /* Modal genérico */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 50; }
+        .modal-content { background-color: white; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); max-width: 500px; width: 90%; }
+
+        /* Ocultar/Mostrar campos específicos */
+        .product-only, .combo-only { display: none; }
+
+        /* Estilo para el botón de autoformato */
+        #autoformat-toggle-btn {
+            background-color: #e5e7eb; /* Gris claro por defecto (desactivado) */
+            color: #6b7280;
+            transition: all 0.2s ease-in-out;
+        }
+        #autoformat-toggle-btn.active {
+            background-color: #3b82f6; /* Azul cuando está activo */
+            color: white;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        }
+        /* Estilo para botones Gemini */
+        .gemini-btn {
+            background-color: #ede9fe; /* Violeta claro */
+            color: #5b21b6; /* Violeta oscuro */
+            padding: 0.3rem;
+            border-radius: 0.375rem;
+            line-height: 1;
+             transition: all 0.2s ease-in-out;
+        }
+         .gemini-btn:hover {
+             background-color: #d8b4fe;
+         }
+         .gemini-btn:disabled {
+             opacity: 0.5;
+             cursor: not-allowed;
+         }
+         .gemini-btn.loading {
+             animation: spin 1s linear infinite;
+         }
+         @keyframes spin {
+             0% { transform: rotate(0deg); }
+             100% { transform: rotate(360deg); }
+         }
+
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    
+    <div id="app-container">
+        <div class="max-w-7xl mx-auto">
+            <header class="mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800">Sistema de Gestión de Ítems</h1>
+                    <p class="text-gray-600">Administra tus productos, servicios y combos.</p>
+                </div>
+            </header>
+
+            <main>
+                <div id="items-section" class="form-section active">
+                    <div class="bg-white p-6 rounded-xl shadow-lg">
+                        
+                         <div class="flex justify-between items-center mb-4">
+                             <div class="flex items-center gap-3"> 
+                                <h2 class="text-xl font-semibold text-gray-800" id="item-view-title">Crear Nuevo Ítem</h2>
+                                <button type="button" id="autoformat-toggle-btn" class="p-1.5 rounded-md text-sm active" title="Activar/Desactivar Autoformato">✨</button> 
+                             </div>
+                            <button type="button" id="toggle-item-view-btn" class="text-sm text-blue-600 hover:underline font-medium">Ver Lista de Ítems</button>
+                        </div>
+                        
+                        <form id="item-form" autocomplete="off" class="">
+                            <input type="hidden" id="editing-item-id">
+
+                            <div class="mb-4">
+                                <label for="item-type" class="block text-sm font-medium text-gray-700">Tipo de Ítem</label>
+                                <select id="item-type" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    <option value="producto">Producto (Simple, con inventario)</option>
+                                    <option value="servicio">Servicio (Simple, sin inventario)</option>
+                                    <option value="combo">Combo (Compuesto)</option>
+                                </select>
+                            </div>
+
+                            <div class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4">
+                                <h3 class="font-semibold text-gray-800 mb-3">Datos Generales</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label for="item-name" class="block text-sm font-medium text-gray-700">Nombre del Ítem</label>
+                                        <input type="text" id="item-name" placeholder="Ej: Laptop Gamer / Mantenimiento PC" class="autoformat-title mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-reference" class="block text-sm font-medium text-gray-700">Referencia</label>
+                                        <input type="text" id="item-reference" placeholder="Ej: LG-X123 / SERV-001" class="autoformat mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-barcode" class="block text-sm font-medium text-gray-700">Código de Barra</label>
+                                        <input type="text" id="item-barcode" placeholder="Ej: 7591234567890" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4">
+                                <h3 class="font-semibold text-gray-800 mb-3">Clasificación <span class="optional-label classification-optional"></span></h3>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Categoría</label>
+                                        <div class="relative mt-1" id="item-category-combobox"></div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Subcategoría</label>
+                                        <div class="relative mt-1" id="item-subcategory-combobox"></div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Marca</label>
+                                        <div class="relative mt-1" id="item-brand-combobox"></div>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Modelo</label>
+                                        <div class="relative mt-1" id="item-model-combobox"></div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Descripción</label>
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <div class="relative flex-grow" id="item-description-combobox"></div>
+                                             {/* Updated Title for Gemini Button */}
+                                             <button type="button" id="gemini-autofill-btn" class="gemini-btn" title="✨ Autocompletar con IA (Nombre, Clasificación, Desc.)">✨</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4 product-only">
+                                <h3 class="font-semibold text-gray-800 mb-3">Detalles y Stock</h3>
+                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"> 
+                                    <div>
+                                        <label for="item-warranty" class="block text-sm font-medium text-gray-700">Garantía</label>
+                                        <input type="text" id="item-warranty" placeholder="Ej: 1 año" class="autoformat mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-color" class="block text-sm font-medium text-gray-700">Color</label>
+                                        <input type="text" id="item-color" placeholder="Ej: Negro" class="autoformat-title mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-stock-min" class="block text-sm font-medium text-gray-700">Stock Mínimo</label>
+                                        <input type="number" id="item-stock-min" placeholder="Ej: 5" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-stock-max" class="block text-sm font-medium text-gray-700">Stock Máximo</label>
+                                        <input type="number" id="item-stock-max" placeholder="Ej: 50" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div> 
+                                        <label for="item-lead-time" class="block text-sm font-medium text-gray-700">Tiempo Reposición (días)</label>
+                                        <input type="number" id="item-lead-time" placeholder="Ej: 30" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 pt-4 border-t">
+                                     <div class="flex items-center">
+                                        <input type="checkbox" id="item-for-sale" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" checked>
+                                        <label for="item-for-sale" class="ml-2 block text-sm text-gray-900">Para la Venta</label>
+                                    </div>
+                                     <div class="flex items-center">
+                                        <input type="checkbox" id="item-has-serial" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                        <label for="item-has-serial" class="ml-2 block text-sm text-gray-900">Lleva Serial</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4">
+                                <h3 class="font-semibold text-gray-800 mb-3">Precios e Impuestos</h3>
+                                <!-- Impuestos -->
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 pb-4 border-b">
+                                    <div class="flex items-center pt-6">
+                                        <input type="checkbox" id="item-tax-exempt" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                        <label for="item-tax-exempt" class="ml-2 block text-sm text-gray-900">Exento de Impuesto</label>
+                                    </div>
+                                    <div>
+                                        <label for="item-tax-type-id" class="block text-sm font-medium text-gray-700">Tipo de Impuesto</label>
+                                        <div class="flex items-center gap-2">
+                                            <select id="item-tax-type-id" class="mt-1 w-full p-2 border border-gray-300 rounded-md"></select>
+                                            <button type="button" id="manage-taxes-btn" class="mt-1 p-2 bg-gray-200 rounded-md hover:bg-gray-300" title="Administrar Tipos de Impuesto">⚙️</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="item-tax-value" class="block text-sm font-medium text-gray-700">Impuesto Asignado (%)</label>
+                                        <input type="number" id="item-tax-value" class="mt-1 w-full p-2 border border-gray-300 rounded-md" readonly>
+                                    </div>
+                                </div>
+                                <!-- Precios -->
+                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4 pb-4 border-b">
+                                    <div>
+                                        <label for="item-cost-usd" class="block text-sm font-medium text-gray-700">Costo ($)</label>
+                                        <input type="number" step="0.01" id="item-cost-usd" placeholder="Ej: 800.00" class="price-input mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-utility" class="block text-sm font-medium text-gray-700">Utilidad (%)</label>
+                                        <input type="number" step="0.01" id="item-utility" placeholder="Ej: 25" class="price-input mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-price-usd" class="block text-sm font-medium text-gray-700">Precio Venta ($)</label>
+                                        <input type="number" step="0.01" id="item-price-usd" placeholder="Ej: 1000.00" class="price-input mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-differential" class="block text-sm font-medium text-gray-700">Diferencial (%)</label>
+                                        <input type="number" step="0.01" id="item-differential" placeholder="Ej: 40" class="price-input mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-price-bcv-usd" class="block text-sm font-medium text-gray-700">Precio Venta BCV ($)</label>
+                                        <input type="number" step="0.01" id="item-price-bcv-usd" placeholder="Ej: 1400.00" class="price-input mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                </div>
+                                <!-- Ofertas / Descuentos / Recargos -->
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                                    <div class="flex items-center pt-6">
+                                        <input type="checkbox" id="item-on-offer" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                        <label for="item-on-offer" class="ml-2 block text-sm text-gray-900">¿En Oferta?</label>
+                                    </div>
+                                     <div>
+                                        <label for="item-offer-percentage" class="block text-sm font-medium text-gray-700">% Oferta</label>
+                                        <input type="number" step="0.01" id="item-offer-percentage" placeholder="Ej: 10" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="item-discount-percentage" class="block text-sm font-medium text-gray-700">% Descuento Adicional</label>
+                                        <input type="number" step="0.01" id="item-discount-percentage" placeholder="Ej: 5" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                     <div>
+                                        <label for="item-surcharge-percentage" class="block text-sm font-medium text-gray-700">% Recargo Adicional</label>
+                                        <input type="number" step="0.01" id="item-surcharge-percentage" placeholder="Ej: 3" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                     <div class="md:col-span-4">
+                                         <label for="item-price-adjustment-reason" class="block text-sm font-medium text-gray-700">Motivo (Oferta/Desc./Recargo)</label>
+                                        <input type="text" id="item-price-adjustment-reason" placeholder="Ej: Promoción fin de semana / Descuento por volumen" class="autoformat mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4 combo-only">
+                                <h3 class="font-semibold text-gray-800 mb-3">Componentes del Combo</h3>
+                                <div class="flex gap-4 mb-4 items-end">
+                                    <div class="flex-grow">
+                                        <label for="combo-search-item" class="block text-sm font-medium text-gray-700">Buscar Producto/Servicio</label>
+                                        <select id="combo-search-item" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                                            <option value="">-- Buscar --</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="combo-item-qty" class="block text-sm font-medium text-gray-700">Cantidad</label>
+                                        <input type="number" id="combo-item-qty" value="1" min="1" class="mt-1 w-20 p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <button type="button" id="add-combo-item-btn" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">+</button>
+                                </div>
+                                <div id="combo-items-list" class="space-y-2"></div>
+                            </div>
+
+                            <div class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4">
+                                <h3 class="font-semibold text-gray-800 mb-3">Imágenes del Ítem</h3>
+                                <label for="item-images" class="w-full inline-block bg-blue-500 text-white text-center py-2 px-4 rounded-md cursor-pointer hover:bg-blue-600 transition">
+                                    Cargar Imágenes
+                                </label>
+                                <input type="file" id="item-images" multiple accept="image/*" class="hidden">
+                                <div id="image-preview" class="image-preview-container"></div>
+                            </div>
+
+                            <div class="mt-6 flex justify-end">
+                                <button type="submit" id="item-submit-btn" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition">Guardar Ítem</button>
+                            </div>
+                        </form>
+
+                        <div id="item-list-wrapper" class="hidden mt-6">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full bg-white border border-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Clasificación</th>
+                                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Referencia</th>
+                                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio ($)</th>
+                                            <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="item-list-body" class="divide-y divide-gray-200"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+    <!-- Modals -->
+    <div id="delete-confirmation-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-lg font-bold mb-2">Confirmar Eliminación</h3>
+            <p id="delete-modal-text" class="text-gray-600 mb-6"></p>
+            <div class="flex justify-end gap-4">
+                <button id="cancel-delete-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancelar</button>
+                <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Eliminar</button>
+            </div>
+        </div>
+    </div>
+    <div id="tax-manager-modal" class="modal-overlay hidden">
+         <div class="modal-content">
+            <h3 class="text-xl font-bold mb-4">Administrar Tipos de Impuesto</h3>
+            <form id="tax-form" class="mb-6 p-4 border rounded-md bg-gray-50">
+                <input type="hidden" id="editing-tax-id">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div class="md:col-span-1">
+                        <label for="tax-name" class="block text-sm font-medium text-gray-700">Nombre del Impuesto</label>
+                        <input type="text" id="tax-name" placeholder="Ej: IVA General" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div class="md:col-span-1">
+                        <label for="tax-rate" class="block text-sm font-medium text-gray-700">Tasa (%)</label>
+                        <input type="number" step="0.01" id="tax-rate" placeholder="Ej: 16" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div class="md:col-span-1">
+                         <button type="submit" id="tax-submit-btn" class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Guardar Impuesto</button>
+                    </div>
+                </div>
+            </form>
+            <h4 class="text-lg font-semibold mb-2">Impuestos Existentes</h4>
+            <div id="tax-list" class="max-h-60 overflow-y-auto border rounded-md"></div>
+            <div class="mt-6 flex justify-end">
+                <button id="close-tax-modal-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+
+<script type="module">
+    // --- SDK DE FIREBASE ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getFirestore, doc, setDoc, getDoc, addDoc, collection, onSnapshot, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- GLOBAL APP STATE VARIABLES ---
+        let db, auth, userId;
+        let classificationData = {}; 
+        let classificationDocRef;
+        let itemsUnsubscribe, taxTypesUnsubscribe; 
+        let allItems = [], allTaxTypes = []; 
+        let itemCategory, itemSubcategory, itemBrand, itemModel, itemDescription; 
+        let uploadedImages = [];
+        let isSubmitting = false;
+        let comboComponents = []; 
+        let autoFormatEnabled = true; 
+
+        // --- DOM ELEMENT REFERENCES ---
+        const appContainer = document.getElementById('app-container');
+        const itemForm = document.getElementById('item-form'); 
+        const toggleBtn = document.getElementById('toggle-item-view-btn'); 
+        const itemListWrapper = document.getElementById('item-list-wrapper'); 
+        const viewTitle = document.getElementById('item-view-title'); 
+        const itemTypeSelect = document.getElementById('item-type');
+        const productOnlyDivs = document.querySelectorAll('.product-only');
+        const comboOnlyDivs = document.querySelectorAll('.combo-only');
+        const classificationOptionalSpan = document.querySelector('.classification-optional');
+        const comboSearchSelect = document.getElementById('combo-search-item');
+        const comboQtyInput = document.getElementById('combo-item-qty');
+        const addComboItemBtn = document.getElementById('add-combo-item-btn');
+        const comboItemsListDiv = document.getElementById('combo-items-list');
+        const taxExemptCheckbox = document.getElementById('item-tax-exempt');
+        const taxTypeSelect = document.getElementById('item-tax-type-id'); 
+        const taxValueInput = document.getElementById('item-tax-value'); 
+        const manageTaxesBtn = document.getElementById('manage-taxes-btn'); 
+        const taxManagerModal = document.getElementById('tax-manager-modal'); 
+        const priceInputs = Array.from(document.querySelectorAll('.price-input'));
+        const autoformatToggleBtn = document.getElementById('autoformat-toggle-btn'); 
+        const geminiAutofillBtn = document.getElementById('gemini-autofill-btn'); 
+
+        // --- UTILITY FUNCTIONS ---
+        const debounce = (func, delay) => { /* ... */ };
+        function formatSpacing(str) { /* ... */ }
+        function formatTitleCase(str) { /* ... */ }
+        function formatSentenceCase(str) { /* ... */ }
+        function formatText(value, type = 'sentence') { /* ... */ }
+
+        // --- FIREBASE INITIALIZATION & AUTH ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        try {
+            const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+            const firebaseConfig = JSON.parse(firebaseConfigStr);
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            onAuthStateChanged(auth, (user) => {
+                if(user) {
+                     userId = user.uid;
+                     initializeAppListeners(); 
+                } else {
+                    signInAnonymously(auth).catch(error => console.error("Error signing in anonymously:", error));
+                }
+            });
+
+        } catch (error) { console.error("Error al inicializar Firebase.", error); }
+
+        // --- CORE APP LOGIC ---
+
+        function initializeAppListeners() {
+            // Initialize comboboxes first
+             itemCategory = createCustomCombobox('item-category-combobox', 'Buscar o crear...', () => Object.keys(classificationData || {}), 
+                (v) => { if(itemSubcategory) itemSubcategory.clear(); if(itemBrand) itemBrand.clear(); if(itemModel) itemModel.clear(); if(itemDescription) itemDescription.clear(); }, 
+                (newValue) => { 
+                 if (autoFormatEnabled) newValue = formatText(newValue, 'title');
+                 if (newValue && !classificationData[newValue]) classificationData[newValue] = {};
+                 updateClassificationData();
+            });
+            itemSubcategory = createCustomCombobox('item-subcategory-combobox', 'Buscar o crear...', () => {
+                const cat = itemCategory?.getValue(); return cat && classificationData[cat] ? Object.keys(classificationData[cat] || {}) : [] 
+            }, (v) => { if(itemBrand) itemBrand.clear(); if(itemModel) itemModel.clear(); if(itemDescription) itemDescription.clear(); }, 
+             (newValue) => {
+                 if (autoFormatEnabled) newValue = formatText(newValue, 'title');
+                 const c=itemCategory.getValue(); if(c&&newValue&&!(classificationData[c]?.[newValue])) { if(!classificationData[c]) classificationData[c]={}; classificationData[c][newValue]={}; updateClassificationData();} 
+            });
+            itemBrand = createCustomCombobox('item-brand-combobox', 'Buscar o crear...', () => {
+                const cat = itemCategory?.getValue(); const sub = itemSubcategory?.getValue(); return cat && sub && classificationData[cat]?.[sub] ? Object.keys(classificationData[cat][sub] || {}) : [] 
+            }, (v) => { if(itemModel) itemModel.clear(); if(itemDescription) itemDescription.clear(); }, 
+             (newValue) => {
+                 if (autoFormatEnabled) newValue = formatText(newValue, 'title');
+                 const c=itemCategory.getValue(),s=itemSubcategory.getValue(); if(c&&s&&newValue&&!(classificationData[c]?.[s]?.[newValue])) { if(!(classificationData[c]?.[s])) classificationData[c][s]={}; classificationData[c][s][newValue]={}; updateClassificationData();} 
+            });
+            itemModel = createCustomCombobox('item-model-combobox', 'Buscar o crear...', () => {
+                const cat = itemCategory?.getValue(); const sub = itemSubcategory?.getValue(); const brand = itemBrand?.getValue(); return cat && sub && brand && classificationData[cat]?.[sub]?.[brand] ? Object.keys(classificationData[cat][sub][brand] || {}) : [] 
+            }, (v) => { if(itemDescription) itemDescription.clear(); }, 
+             (newValue) => {
+                 if (autoFormatEnabled) newValue = formatText(newValue, 'title');
+                 const c=itemCategory.getValue(),s=itemSubcategory.getValue(),b=itemBrand.getValue(); if(c&&s&&b&&newValue&&!(classificationData[c]?.[s]?.[b]?.[newValue])) { if(!(classificationData[c]?.[s]?.[b])) classificationData[c][s][b]={}; classificationData[c][s][b][newValue]=[]; updateClassificationData();} 
+            });
+            itemDescription = createCustomCombobox('item-description-combobox', 'Buscar o crear...', () => {
+                 const cat = itemCategory?.getValue(); const sub = itemSubcategory?.getValue(); const brand = itemBrand?.getValue(); const model = itemModel?.getValue(); return cat && sub && brand && model && classificationData[cat]?.[sub]?.[brand]?.[model] ? (classificationData[cat][sub][brand][model] || []) : [] 
+            }, () => {}, (newValue) => {
+                 if (newValue && !newValue.startsWith('✨')) { 
+                    if (autoFormatEnabled) newValue = formatText(newValue, 'sentence');
+                 }
+                 const c=itemCategory.getValue(),s=itemSubcategory.getValue(),b=itemBrand.getValue(),m=itemModel.getValue(); if(c&&s&&b&&m&&newValue&&!(classificationData[c]?.[s]?.[b]?.[m]?.includes(newValue))) { if(!(classificationData[c]?.[s]?.[b]?.[m])) classificationData[c][s][b][m]=[]; classificationData[c][s][b][m].push(newValue); updateClassificationData();}
+            });
+            
+            classificationDocRef = doc(db, `artifacts/${appId}/users/${userId}/classifications`, "main");
+            loadClassificationData();
+            listenForItems(); 
+            listenForTaxTypes(); 
+            
+            itemForm.addEventListener('input', saveFormData); 
+
+            toggleBtn.addEventListener('click', () => { /* ... */ });
+            document.getElementById('item-list-body').addEventListener('click', (e) => { /* ... */ });
+            document.getElementById('cancel-delete-btn').addEventListener('click', () => { /* ... */ });
+            // Confirm delete button logic is now inside showDeleteConfirmation
+                        
+            taxExemptCheckbox.addEventListener('change', toggleTaxFields);
+            taxTypeSelect.addEventListener('change', () => { /* ... */ });
+            manageTaxesBtn.addEventListener('click', () => taxManagerModal.classList.remove('hidden')); 
+            document.getElementById('close-tax-modal-btn').addEventListener('click', () => taxManagerModal.classList.add('hidden')); 
+            document.getElementById('tax-list').addEventListener('click', (e) => { /* ... */ });
+            document.getElementById('tax-form').addEventListener('submit', async (e) => { /* ... */ });
+
+            priceInputs.forEach(input => { /* ... */ });
+            
+            // Add blur listeners for auto-formatting regular text inputs
+            itemForm.querySelectorAll('input.autoformat, input.autoformat-title').forEach(input => { /* ... */ });
+             // Listener for the global autoformat toggle button
+            autoformatToggleBtn.addEventListener('click', () => { /* ... */ });
+            // Restore preference on load
+            const savedFormatPref = localStorage.getItem('autoFormatPreference');
+             if (savedFormatPref !== null) { /* ... */ }
+
+            itemForm.addEventListener('submit', handleFormSubmit); 
+            itemTypeSelect.addEventListener('change', (e) => showHideFields(e.target.value)); 
+            addComboItemBtn.addEventListener('click', addComponentToCombo);
+            comboItemsListDiv.addEventListener('click', (e) => { /* ... */ });
+            geminiAutofillBtn.addEventListener('click', autofillWithGemini); 
+
+
+            showHideFields(itemTypeSelect.value); 
+            populateComboSearch();
+        }
+
+        // --- Firestore & Data Loading ---
+        async function updateClassificationData() { /* ... */ }
+        function loadClassificationData() { /* ... */ }
+        function listenForItems() { /* ... */ }
+        function listenForTaxTypes() { /* ... */ }
+
+        // --- UI Rendering ---
+        function renderItemList() { /* ... */ }
+        function populateTaxDropdown() { /* ... */ }
+        function renderTaxListInModal() { /* ... */ }
+        function populateComboSearch() { /* ... */ }
+        function renderComboComponents() { /* ... */ }
+        
+        // --- FORM LOGIC ---
+        const AUTOSAVE_KEY = 'itemFormData'; 
+        const saveFormData = debounce(() => { /* ... */ }, 500); 
+        function clearSavedData() { localStorage.removeItem(AUTOSAVE_KEY); }
+        function restoreFormData() { /* No modal shown */ }
+        function showItemListView() { /* ... */ }
+        function showItemFormView() { /* ... */ }
+        function showDeleteConfirmation(id, type) { /* ... */ }
+        function resetFormToCreateMode() { /* ... */ }
+        function prepareFormForEdit(id) { /* ... */ }
+        
+        function createCustomCombobox(containerId, placeholder, getOptionsFn, onSelectFn, onAddFn) {
+            const container = document.getElementById(containerId);
+            if (!container) { console.warn(`Combobox container not found: ${containerId}`); return { getValue: () => '', setValue: () => {}, clear: () => {} }; }
+            if (!container.querySelector('input')) container.innerHTML = `<input type="text" placeholder="${placeholder}" class="w-full p-2 border border-gray-300 rounded-md"><div class="combobox-options"></div>`;
+            const input = container.querySelector('input');
+            const optionsContainer = container.querySelector('.combobox-options');
+            let selectedValue = '';
+            
+            const updateOptions = () => { 
+                const filterText = input.value.toLowerCase();
+                let options = [];
+                try { 
+                    options = getOptionsFn() || [];
+                    if (!Array.isArray(options)) { options = []; }
+                } catch (e) { console.error("Error getting options for", containerId, e); options = []; }
+                
+                optionsContainer.innerHTML = '';
+                const stringOptions = options.filter(opt => typeof opt === 'string');
+                const filteredOptions = stringOptions.filter(opt => opt.toLowerCase().includes(filterText)); 
+                
+                filteredOptions.forEach(opt => { 
+                    const optionEl = document.createElement('div');
+                    optionEl.className = 'combobox-option'; optionEl.textContent = opt;
+                    optionEl.dataset.value = opt; optionsContainer.appendChild(optionEl);
+                 });
+
+                const exactMatch = stringOptions.some(opt => opt.toLowerCase() === filterText);
+                if (filterText && !exactMatch) { 
+                    const createEl = document.createElement('div');
+                    createEl.className = 'combobox-option create-option';
+                    createEl.innerHTML = `Crear "<strong>${input.value}</strong>"`;
+                    createEl.dataset.value = input.value; optionsContainer.prepend(createEl);
+                 }
+                optionsContainer.classList.toggle('visible', optionsContainer.children.length > 0);
+            };
+            input.addEventListener('keydown', (e) => {
+                 if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const createOption = optionsContainer.querySelector('.create-option');
+                    const firstOption = optionsContainer.querySelector('.combobox-option:not(.create-option)'); 
+                    let valueToSet = input.value;
+                    let formattedValueForAdd = valueToSet; 
+
+                    if (optionsContainer.classList.contains('visible')) {
+                        if (createOption && input.value.trim().length > 0) { 
+                             valueToSet = createOption.dataset.value; 
+                             formattedValueForAdd = valueToSet; 
+                             if (autoFormatEnabled) formattedValueForAdd = formatText(valueToSet, 'title');
+                             onAddFn(formattedValueForAdd); 
+                             valueToSet = formattedValueForAdd; 
+                        } else if (firstOption) { 
+                            valueToSet = firstOption.dataset.value; 
+                        } else { valueToSet = ''; }
+                    } else if (input.value.trim().length > 0) { 
+                        valueToSet = input.value;
+                         formattedValueForAdd = valueToSet;
+                        if (autoFormatEnabled) formattedValueForAdd = formatText(valueToSet, 'title');
+                        onAddFn(formattedValueForAdd); 
+                        valueToSet = formattedValueForAdd; 
+                    } else { valueToSet = ''; }
+                    
+                    selectedValue = valueToSet; 
+                    input.value = valueToSet; 
+                    onSelectFn(valueToSet); 
+                    optionsContainer.classList.remove('visible');
+
+                    // Focus next logic
+                    const classificationInputs = ['#item-category-combobox input', '#item-subcategory-combobox input', '#item-brand-combobox input', '#item-model-combobox input', '#item-description-combobox input'];
+                    const currentInput = classificationInputs.find(selector => container.querySelector(selector) === e.target);
+                    const currentIndex = classificationInputs.findIndex(selector => container.querySelector(selector) === e.target);
+                    
+                    if (currentIndex > -1 && currentIndex < classificationInputs.length - 1) {
+                        const nextInput = document.querySelector(classificationInputs[currentIndex + 1]);
+                        if(nextInput) nextInput.focus(); 
+                    } else { 
+                        const firstNonClassificationInput = document.getElementById('item-warranty') || document.getElementById('item-cost-usd'); // Find next logical input
+                        if (firstNonClassificationInput) firstNonClassificationInput.focus(); 
+                    }
+                }
+            });
+            input.addEventListener('input', updateOptions);
+            input.addEventListener('focus', updateOptions);
+            optionsContainer.addEventListener('mousedown', (e) => { 
+                const target = e.target.closest('.combobox-option');
+                if (!target) return;
+                let newValue = target.dataset.value;
+                if (target.classList.contains('create-option')) {
+                     let formattedValueForAdd = newValue;
+                    if (autoFormatEnabled) formattedValueForAdd = formatText(newValue, 'title'); 
+                    onAddFn(formattedValueForAdd); 
+                    newValue = formattedValueForAdd; 
+                }
+                selectedValue = newValue; 
+                input.value = newValue; 
+                onSelectFn(newValue); 
+                optionsContainer.classList.remove('visible');
+            });
+             input.addEventListener('blur', () => { setTimeout(() => { if (!optionsContainer.contains(document.activeElement) && !input.contains(document.activeElement)) optionsContainer.classList.remove('visible'); }, 150); }); // Check input focus too
+
+            return {
+                getValue: () => selectedValue,
+                setValue: (val) => { 
+                    selectedValue = val || ''; 
+                    input.value = val || ''; 
+                    // Do NOT call onSelectFn here automatically for setValue
+                }, 
+                clear: () => { selectedValue = ''; input.value = ''; onSelectFn(''); },
+                triggerOnSelect: () => { onSelectFn(selectedValue); } // Method to manually trigger dependency updates
+            };
+        }
+        function toggleTaxFields() { 
+             const isExempt = taxExemptCheckbox.checked;
+            taxTypeSelect.disabled = isExempt; 
+            taxValueInput.readOnly = true; // Always readonly
+            taxValueInput.disabled = isExempt; 
+            if (isExempt) {
+                taxTypeSelect.value = ''; 
+                taxValueInput.value = '0'; 
+            } else if(taxTypeSelect.value) { 
+                 const event = new Event('change');
+                 taxTypeSelect.dispatchEvent(event);
+            } else {
+                 taxValueInput.value = ''; 
+            }
+        }
+        function handlePriceChange(e) { /* ... */ }
+        function showHideFields(itemType) { 
+            productOnlyDivs.forEach(div => div.style.display = itemType === 'producto' ? 'block' : 'none');
+            comboOnlyDivs.forEach(div => div.style.display = itemType === 'combo' ? 'block' : 'none');
+            const isOptional = itemType === 'servicio' || itemType === 'combo';
+            classificationOptionalSpan.style.display = isOptional ? 'inline' : 'none';
+             const costInput = document.getElementById('item-cost-usd');
+             if (itemType === 'servicio') costInput.placeholder = 'Ej: 50.00 (Opcional)'; 
+             else costInput.placeholder = 'Ej: 800.00';
+        }
+        function addComponentToCombo() { /* ... */ }
+        function updateComboComponent(id, field, value) { /* ... */ }
+        async function handleFormSubmit(e) { /* ... */ }
+
+         // --- GEMINI API FUNCTION ---
+         async function autofillWithGemini() { 
+             const name = document.getElementById('item-name').value;
+
+             if (!name) { alert('Por favor, ingresa al menos el nombre del ítem.'); return; }
+
+             geminiAutofillBtn.disabled = true;
+             geminiAutofillBtn.innerHTML = '⏳'; 
+             geminiAutofillBtn.classList.add('loading');
+
+             const userQuery = `Basado en el nombre del ítem "${name}", autocompleta la siguiente información en formato JSON. Busca en la web si es necesario usando las herramientas disponibles. Para el tipo de IVA, considera las tasas vigentes en Venezuela (General 16%, Reducido 8%, Lujo 31%). Si no encuentras información para barcode o reference, déjalos como string vacío "".
+
+                {
+                  "category": "string",
+                  "subcategory": "string",
+                  "brand": "string",
+                  "model": "string",
+                  "barcode": "string",
+                  "reference": "string",
+                  "taxTypeNameVE": "string", 
+                  "description": "string" 
+                }`;
+
+            const systemPrompt = "Actúa como un asistente de gestión de inventario experto. Proporciona la información solicitada en el formato JSON especificado, buscando datos adicionales en la web si es necesario.";
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+            const responseSchema = { /* ... schema definition ... */ };
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                tools: [{ "google_search": {} }], 
+                generationConfig: { responseMimeType: "application/json", responseSchema: responseSchema }
+            };
+
+             let retries = 0; const maxRetries = 3; let success = false; let errorMessage = '';
+
+             while (retries < maxRetries && !success) {
+                 try {
+                     const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                     const result = await response.json();
+                     const candidate = result.candidates?.[0];
+                     
+                     if (candidate && candidate.content?.parts?.[0]?.text) {
+                         const jsonText = candidate.content.parts[0].text;
+                         const data = JSON.parse(jsonText); 
+
+                         // --- Populate Fields ---
+                         // Use setValue and manually trigger onSelect to update dependencies
+                         itemCategory?.setValue(formatText(data.category || '', 'title')); 
+                         itemCategory?.triggerOnSelect(); // Manually update subcategory options
+                         await updateClassificationData(); 
+                         
+                         itemSubcategory?.setValue(formatText(data.subcategory || '', 'title'));
+                         itemSubcategory?.triggerOnSelect(); // Manually update brand options
+                         await updateClassificationData();
+                         
+                         itemBrand?.setValue(formatText(data.brand || '', 'title'));
+                         itemBrand?.triggerOnSelect(); // Manually update model options
+                         await updateClassificationData();
+                         
+                         itemModel?.setValue(formatText(data.model || '', 'title'));
+                         itemModel?.triggerOnSelect(); // Manually update description options
+                         await updateClassificationData(); 
+
+                         // Populate normal inputs
+                         document.getElementById('item-barcode').value = data.barcode || '';
+                         document.getElementById('item-reference').value = formatText(data.reference || '', 'sentence'); 
+
+                         // Populate Tax Type
+                         const taxNameFromGemini = data.taxTypeNameVE || '';
+                         const foundTax = allTaxTypes.find(t => t.name.toLowerCase() === taxNameFromGemini.toLowerCase());
+                         if (foundTax) {
+                             taxTypeSelect.value = foundTax.id;
+                             const event = new Event('change'); 
+                             taxTypeSelect.dispatchEvent(event);
+                         } else if (taxNameFromGemini) {
+                             console.warn(`Tax type "${taxNameFromGemini}" not found in DB.`);
+                         }
+
+                         // Populate Description
+                         let desc = formatText(data.description || '', 'sentence');
+                         itemDescription?.setValue(desc); 
+                         // No need to call triggerOnSelect for the last field
+
+                         success = true; 
+                         alert('Campos autocompletados con IA.');
+
+                     } else { /* ... error handling ... */ }
+                 } catch (error) { /* ... error handling ... */ } 
+                 finally { /* ... reset button state ... */ }
+             } 
+         }
+        
+    });
+
+</script>
+</body>
+</html>
+

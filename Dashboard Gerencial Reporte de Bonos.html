@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Gerencial con Bonos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center hidden">
+        <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-cyan-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p id="loading-text" class="mt-2 text-gray-600">Calculando...</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Dashboard Gerencial: Reporte de Bonos</h1>
+            <p class="text-gray-500">Configura y calcula los bonos de productividad de tu equipo.</p>
+        </div>
+
+        <!-- Configuración de Bonos -->
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8 border-t-4 border-cyan-600">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Configuración de Bonos</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div>
+                    <label for="bonus-good-threshold" class="block text-sm font-medium text-gray-700">Puntos para Bono "Bueno"</label>
+                    <input type="number" id="bonus-good-threshold" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+                <div>
+                    <label for="bonus-good-amount" class="block text-sm font-medium text-gray-700">Monto Bono "Bueno" ($)</label>
+                    <input type="number" id="bonus-good-amount" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+                <div>
+                    <label for="bonus-excellent-threshold" class="block text-sm font-medium text-gray-700">Puntos para Bono "Excelente"</label>
+                    <input type="number" id="bonus-excellent-threshold" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+                <div>
+                    <label for="bonus-excellent-amount" class="block text-sm font-medium text-gray-700">Monto Bono "Excelente" ($)</label>
+                    <input type="number" id="bonus-excellent-amount" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="save-config-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg">Guardar Configuración</button>
+            </div>
+        </div>
+
+        <!-- Reporte de Bonos -->
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Reporte de Bonos por Período</h2>
+            <div class="flex flex-wrap gap-4 items-center mb-6 pb-6 border-b">
+                <div class="flex-1 min-w-[200px]">
+                    <label for="start-date-filter" class="text-sm font-medium text-gray-600">Desde</label>
+                    <input type="date" id="start-date-filter" class="w-full mt-1 p-2 border rounded-md bg-gray-50">
+                </div>
+                <div class="flex-1 min-w-[200px]">
+                    <label for="end-date-filter" class="text-sm font-medium text-gray-600">Hasta</label>
+                    <input type="date" id="end-date-filter" class="w-full mt-1 p-2 border rounded-md bg-gray-50">
+                </div>
+                <div class="pt-6">
+                    <button id="calculate-bonus-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg">Calcular Bonos</button>
+                </div>
+            </div>
+            
+            <div id="bonus-results-container" class="overflow-x-auto">
+                <p class="text-center text-gray-500">Selecciona un rango de fechas y haz clic en "Calcular Bonos" para ver los resultados.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+            authDomain: "sistema-productividad-equipo.firebaseapp.com",
+            projectId: "sistema-productividad-equipo",
+            storageBucket: "sistema-productividad-equipo.appspot.com",
+            messagingSenderId: "196802708765",
+            appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const configCol = db.collection('config');
+        const activityLogsCol = db.collection('activity_logs');
+        const employeesCol = db.collection('employees');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            const loadingText = document.getElementById('loading-text');
+
+            const goodThresholdInput = document.getElementById('bonus-good-threshold');
+            const goodAmountInput = document.getElementById('bonus-good-amount');
+            const excellentThresholdInput = document.getElementById('bonus-excellent-threshold');
+            const excellentAmountInput = document.getElementById('bonus-excellent-amount');
+            
+            let employeesMap = {};
+
+            const toggleLoading = (show, text = 'Cargando...') => {
+                loadingText.textContent = text;
+                loadingOverlay.classList.toggle('hidden', !show);
+                loadingOverlay.classList.toggle('flex', show);
+            };
+
+            const loadInitialData = async () => {
+                try {
+                    // Load bonus config
+                    const configDoc = await configCol.doc('system_settings').get();
+                    if (configDoc.exists) {
+                        const config = configDoc.data();
+                        goodThresholdInput.value = config.bonus_good_threshold || 0;
+                        goodAmountInput.value = config.bonus_good_amount_usd || 0;
+                        excellentThresholdInput.value = config.bonus_excellent_threshold || 0;
+                        excellentAmountInput.value = config.bonus_excellent_amount_usd || 0;
+                    }
+
+                    // Load employees
+                    const employeesSnap = await employeesCol.where('is_active', '==', true).get();
+                    employeesSnap.forEach(doc => {
+                        employeesMap[doc.id] = doc.data();
+                    });
+
+                    // Set default dates
+                    const today = new Date().toISOString().split('T')[0];
+                    document.getElementById('start-date-filter').value = today;
+                    document.getElementById('end-date-filter').value = today;
+                } catch (error) {
+                    console.error("Error loading initial data:", error);
+                    alert("No se pudieron cargar los datos iniciales.");
+                }
+            };
+
+            document.getElementById('save-config-btn').onclick = async () => {
+                const config = {
+                    bonus_good_threshold: parseInt(goodThresholdInput.value) || 0,
+                    bonus_good_amount_usd: parseFloat(goodAmountInput.value) || 0,
+                    bonus_excellent_threshold: parseInt(excellentThresholdInput.value) || 0,
+                    bonus_excellent_amount_usd: parseFloat(excellentAmountInput.value) || 0,
+                };
+                try {
+                    toggleLoading(true, 'Guardando...');
+                    await configCol.doc('system_settings').set(config);
+                    alert("Configuración de bonos guardada con éxito.");
+                } catch (error) {
+                    console.error("Error saving config:", error);
+                    alert("No se pudo guardar la configuración.");
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            document.getElementById('calculate-bonus-btn').onclick = async () => {
+                const resultsContainer = document.getElementById('bonus-results-container');
+                resultsContainer.innerHTML = `<p class="text-center text-gray-500">Calculando...</p>`;
+                toggleLoading(true, 'Calculando bonos...');
+
+                try {
+                    const startDate = new Date(document.getElementById('start-date-filter').value);
+                    startDate.setUTCHours(0, 0, 0, 0);
+                    const endDate = new Date(document.getElementById('end-date-filter').value);
+                    endDate.setUTCHours(23, 59, 59, 999);
+
+                    // Fetch current config
+                    const configDoc = await configCol.doc('system_settings').get();
+                    const config = configDoc.exists ? configDoc.data() : {};
+                    const goodThreshold = config.bonus_good_threshold || 0;
+                    const goodAmount = config.bonus_good_amount_usd || 0;
+                    const excellentThreshold = config.bonus_excellent_threshold || 0;
+                    const excellentAmount = config.bonus_excellent_amount_usd || 0;
+
+                    // Fetch logs
+                    const logsSnap = await activityLogsCol
+                        .where('status', '==', 'completed')
+                        .where('end_time', '>=', startDate)
+                        .where('end_time', '<=', endDate)
+                        .get();
+                    
+                    const pointsByEmployee = {};
+
+                    logsSnap.forEach(doc => {
+                        const log = doc.data();
+                        const points = Math.floor((log.total_duration_seconds || 0) / 60); // 1 point per minute
+                        if (!pointsByEmployee[log.employee_id]) {
+                            pointsByEmployee[log.employee_id] = 0;
+                        }
+                        pointsByEmployee[log.employee_id] += points;
+                    });
+
+                    const results = Object.keys(employeesMap).map(employeeId => {
+                        const totalPoints = pointsByEmployee[employeeId] || 0;
+                        let level = "Normal";
+                        let amount = 0;
+
+                        if (totalPoints >= excellentThreshold) {
+                            level = "Excelente";
+                            amount = excellentAmount;
+                        } else if (totalPoints >= goodThreshold) {
+                            level = "Bueno";
+                            amount = goodAmount;
+                        }
+
+                        return {
+                            name: employeesMap[employeeId].name,
+                            points: totalPoints,
+                            level: level,
+                            amount: amount
+                        };
+                    }).sort((a,b) => b.points - a.points); // Sort by points descending
+
+                    renderBonusResults(results);
+
+                } catch (error) {
+                    console.error("Error calculating bonuses:", error);
+                    resultsContainer.innerHTML = `<p class="text-center text-red-500">Error al calcular. Es posible que falte un índice en la base de datos. Revisa la consola.</p>`;
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            function renderBonusResults(results) {
+                const container = document.getElementById('bonus-results-container');
+                 if (results.length === 0) {
+                    container.innerHTML = `<p class="text-center text-gray-500">No hay datos de productividad para el período seleccionado.</p>`;
+                    return;
+                }
+
+                const levelColors = {
+                    "Normal": "bg-gray-100 text-gray-800",
+                    "Bueno": "bg-blue-100 text-blue-800",
+                    "Excelente": "bg-green-100 text-green-800"
+                };
+
+                container.innerHTML = `
+                    <table class="w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3">Empleado</th>
+                                <th scope="col" class="px-6 py-3">Puntos Totales</th>
+                                <th scope="col" class="px-6 py-3">Nivel de Bono</th>
+                                <th scope="col" class="px-6 py-3 text-right">Monto del Bono</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${results.map(res => `
+                                <tr class="bg-white border-b hover:bg-gray-50">
+                                    <td class="px-6 py-4 font-medium text-gray-900">${res.name}</td>
+                                    <td class="px-6 py-4">${res.points}</td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-2 py-1 text-xs font-semibold rounded-full ${levelColors[res.level]}">${res.level}</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right font-semibold text-gray-900">$${res.amount.toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            let initialized = false;
+
+            const startModule = async () => {
+                if (initialized) return;
+                initialized = true;
+                await loadInitialData();
+            };
+
+            firebase.auth().onAuthStateChanged(user => {
+                if (user) {
+                    startModule();
+                } else {
+                    firebase.auth().signInAnonymously().catch(error => {
+                        console.error('Error autenticando módulo de bonos:', error);
+                        toggleLoading(false);
+                        alert('No fue posible iniciar la sesión con Firebase.');
+                    });
+                }
+            });
+
+        });
+    </script>
+</body>
+</html>

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Administración de Acceso</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Actualizado: quitar integrity incorrecto para evitar bloqueo y usar versión 6.5.1 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <style>
         body { font-family: 'Inter', sans-serif; }
         .modal-bg { background-color: rgba(0,0,0,0.5); }
@@ -13,6 +15,31 @@
         .password-toggle { position: absolute; top: 50%; right: 0.75rem; transform: translateY(-50%); cursor: pointer; }
         .permission-group { margin-bottom: 1rem; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1rem; }
         .permission-group-title { font-weight: 600; margin-bottom: 0.75rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+        /* Estándar de botones y contenedores */
+        #admin-section button { display: inline-flex; align-items: center; justify-content: center; min-height: 2.5rem; line-height: 1; border-radius: 0.5rem; font-weight: 600; padding: 0.5rem 1rem; gap: 0.5rem; white-space: nowrap; }
+        .btn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+        .btn-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
+        /* Íconos responsivos: ocultar texto en pantallas estrechas */
+        @media (max-width: 640px) {
+            .btn-row .btn-text, .btn-group .btn-text { display: none; }
+            #admin-section button { min-width: 2.5rem; padding-left: 0.5rem; padding-right: 0.5rem; }
+        }
+        /* Ocultar texto un poco antes para evitar desbordes en layouts amplios con muchas acciones */
+        @media (max-width: 1024px) {
+            .btn-row .btn-text, .btn-group .btn-text { display: none; }
+            #admin-section button { min-width: 2.5rem; padding-left: 0.5rem; padding-right: 0.5rem; }
+        }
+        /* Evitar que las acciones de tabla se rompan a otra línea en desktop */
+        .no-wrap-actions { flex-wrap: nowrap; }
+        .table-actions button { padding: 0.375rem 0.5rem; font-size: 0.875rem; }
+        .table-actions { gap: 0.375rem; }
+        /* Acciones en modales: siempre mostrar texto y dar mayor área clickeable */
+        .modal-actions .btn-text { display: inline !important; }
+        .modal-actions button { min-height: 2.75rem; min-width: 9rem; font-size: 0.95rem; }
+        @media (max-width: 640px) {
+            .modal-actions { flex-direction: column; align-items: stretch; }
+            .modal-actions button { width: 100%; }
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -47,25 +74,99 @@
         </div>
 
         <div id="admin-section" class="hidden w-full max-w-6xl">
-            <div class="bg-white shadow-lg rounded-xl p-6 space-y-8">
+            <div class="bg-white shadow-lg rounded-xl p-6 space-y-8 overflow-hidden">
                 <div class="flex flex-wrap justify-between items-center gap-4">
-                    <div><h1 class="text-3xl font-bold text-gray-800">Panel de Administración</h1><p id="welcome-message" class="text-gray-600"></p></div>
-                    <button id="logout-button" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">Cerrar Sesión</button>
+                    <div><h1 class="text-3xl font-bold text-gray-800">Panel de Administración</h1><p id="welcome-message" class="text-gray-600 hidden"></p></div>
+                    <button id="logout-button" class="bg-red-500 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                        <span class="btn-text">Cerrar Sesión</span>
+                    </button>
                 </div>
                 
                 <div class="border-t pt-6">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-semibold">Gestión de Usuarios</h2><button id="create-user-btn" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">+ Crear Usuario</button></div>
-                    <div class="overflow-x-auto"><table class="min-w-full bg-white"><thead class="bg-gray-200"><tr><th class="py-2 px-4 text-left">Posición</th><th class="py-2 px-4 text-left">Nombre</th><th class="py-2 px-4 text-left">Roles</th><th class="py-2 px-4 text-center">Estado</th><th class="py-2 px-4 text-center">Acciones</th></tr></thead><tbody id="user-table-body"></tbody></table></div>
+                    <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                        <h2 class="text-2xl font-semibold">Gestión de Usuarios</h2>
+                        <div class="btn-group">
+                            <button id="reset-passwords-btn" class="bg-gray-700 hover:bg-gray-800 text-white" title="Eliminar contraseñas de todos los usuarios">
+                                <i class="fa-solid fa-key"></i>
+                                <span class="btn-text">Resetear Contraseñas</span>
+                            </button>
+                            <button id="create-user-btn" class="bg-purple-600 hover:bg-purple-700 text-white">
+                                <i class="fa-solid fa-user-plus"></i>
+                                <span class="btn-text">Crear Usuario</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <input id="user-search-input" type="text" placeholder="Buscar usuarios por nombre o rol..." class="w-full md:w-1/2 shadow appearance-none border rounded-lg py-2 px-3 leading-tight focus:outline-none focus:shadow-outline" />
+                    </div>
+                    <div class="hidden lg:block overflow-x-auto">
+                        <table class="min-w-full bg-white">
+                            <thead class="bg-gray-200">
+                                <tr>
+                                    <th class="py-2 px-4 text-center">Posición</th>
+                                    <th class="py-2 px-4 text-center">Nombre</th>
+                                    <th class="py-2 px-4 text-left">Roles</th>
+                                    <th class="py-2 px-4 text-center">Estado</th>
+                                    <th class="py-2 px-4 text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="user-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div id="user-cards" class="block lg:hidden grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+                    <div id="user-pagination" class="flex items-center justify-center gap-2 mt-3"></div>
                 </div>
 
                 <div class="border-t pt-6">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-semibold">Gestión de Roles</h2><button id="create-role-btn" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">+ Crear Rol</button></div>
+                    <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                        <h2 class="text-2xl font-semibold">Gestión de Roles</h2>
+                        <div class="btn-row">
+                            <div class="btn-group">
+                                <button id="create-role-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center">
+                                    <i class="fa-solid fa-plus btn-icon"></i>
+                                    <span class="btn-text">Crear Rol</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <input id="role-search-input" type="text" placeholder="Buscar roles..." class="w-full md:w-1/3 shadow appearance-none border rounded-lg py-2 px-3 leading-tight focus:outline-none focus:shadow-outline" />
+                    </div>
                     <div class="overflow-x-auto"><table class="min-w-full bg-white"><thead class="bg-gray-200"><tr><th class="py-2 px-4 text-left">Nombre del Rol</th><th class="py-2 px-4 text-center">Acciones</th></tr></thead><tbody id="role-table-body"></tbody></table></div>
+                    <div id="role-pagination" class="flex items-center justify-center gap-2 mt-3"></div>
                 </div>
 
                 <div class="border-t pt-6">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-semibold">Gestión de Funciones (Permisos)</h2><button id="create-permission-btn" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">+ Crear Función</button></div>
-                    <div class="overflow-x-auto"><table class="min-w-full bg-white"><thead class="bg-gray-200"><tr><th class="py-2 px-4 text-left">Función (Clave)</th><th class="py-2 px-4 text-left">Descripción</th><th class="py-2 px-4 text-left">Módulo</th><th class="py-2 px-4 text-center">Acciones</th></tr></thead><tbody id="permission-table-body"></tbody></table></div>
+                    <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                        <h2 class="text-2xl font-semibold">Gestión de Funciones (Permisos)</h2>
+                        <div class="btn-row">
+                            <div class="btn-group">
+                                <button id="create-permission-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center">
+                                    <i class="fa-solid fa-plus btn-icon"></i>
+                                    <span class="btn-text">Crear Función</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <input id="perm-search-input" type="text" placeholder="Buscar funciones por clave, descripción o módulo..." class="w-full md:w-1/2 shadow appearance-none border rounded-lg py-2 px-3 leading-tight focus:outline-none focus:shadow-outline" />
+                    </div>
+                    <div class="hidden lg:block overflow-x-auto">
+                        <table class="min-w-full bg-white">
+                            <thead class="bg-gray-200">
+                                <tr>
+                                    <th class="py-2 px-4 text-left">Función (Clave)</th>
+                                    <th class="py-2 px-4 text-left">Descripción</th>
+                                    <th class="py-2 px-4 text-left">Módulo</th>
+                                    <th class="py-2 px-4 text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="permission-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div id="permission-cards" class="block lg:hidden grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+                    <div id="permission-pagination" class="flex items-center justify-center gap-2 mt-3"></div>
                 </div>
             </div>
         </div>
@@ -75,10 +176,11 @@
     <div id="user-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-bg"><div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg"><h2 id="user-modal-title" class="text-2xl font-bold mb-6"></h2><form id="user-form"></form></div></div>
     <div id="role-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-bg"><div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md"><h2 id="role-modal-title" class="text-2xl font-bold mb-6"></h2><form id="role-form"></form></div></div>
     <div id="permission-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-bg"><div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg"><h2 id="permission-modal-title" class="text-2xl font-bold mb-6"></h2><form id="permission-form"></form></div></div>
-    <div id="assign-permission-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-bg"><div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl max-h-[90vh] flex flex-col"><h2 id="assign-permission-modal-title" class="text-2xl font-bold mb-4 border-b pb-4"></h2><div id="permissions-container" class="overflow-y-auto flex-grow my-4"></div><div class="flex justify-end space-x-4 pt-4 border-t"><button type="button" id="cancel-assign-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Cerrar</button><button type="button" id="save-assign-btn" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Guardar Permisos</button></div></div></div>
+    <div id="assign-permission-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-bg"><div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl max-h-[90vh] flex flex-col"><h2 id="assign-permission-modal-title" class="text-2xl font-bold mb-4 border-b pb-4"></h2><div id="permissions-container" class="overflow-y-auto flex-grow my-4"></div><div class="btn-row modal-actions justify-end pt-4 border-t"><button type="button" id="cancel-assign-btn" class="bg-gray-500 hover:bg-gray-600 text-white"><i class="fa-solid fa-xmark"></i><span class="btn-text">Cerrar</span></button><button type="button" id="save-assign-btn" class="bg-purple-600 hover:bg-purple-700 text-white"><i class="fa-solid fa-floppy-disk"></i><span class="btn-text">Guardar Permisos</span></button></div></div></div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script>
         // --- CONFIG & INITIALIZATION ---
         const firebaseConfig = {
@@ -89,14 +191,83 @@
             messagingSenderId: "196802708765",
             appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
         };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const employeesCol = db.collection('employees');
-        const rolesCol = db.collection('roles');
-        const permissionsCol = db.collection('permissions');
-        const rolePermissionsCol = db.collection('role_permissions');
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const employeesCol = db.collection('employees');
+    const rolesCol = db.collection('roles');
+    const permissionsCol = db.collection('permissions');
+    const rolePermissionsCol = db.collection('role_permissions');
+    let authInitializationPromise = null;
+    let appReady = false;
+    let waitingForParentContext = false;
 
-        let allUsers = [], allRoles = [], allPermissions = [], rolePermissionsMap = {}, currentUser = null, currentRoleIdForPermissions = null;
+        // ===== Utilidades de seguridad: PBKDF2 (hash de contraseñas) =====
+        const PBKDF2_ITERATIONS = 100000;
+        const PBKDF2_HASH = 'SHA-256';
+        function strToBytes(str) { return new TextEncoder().encode(str); }
+        function bytesToBase64(bytes) {
+            let bin = '';
+            bytes = new Uint8Array(bytes);
+            for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+            return btoa(bin);
+        }
+        function base64ToBytes(b64) {
+            const bin = atob(b64);
+            const out = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+            return out;
+        }
+        async function pbkdf2Hash(password, saltB64) {
+            const salt = saltB64 ? base64ToBytes(saltB64) : crypto.getRandomValues(new Uint8Array(16));
+            const keyMaterial = await crypto.subtle.importKey('raw', strToBytes(password), { name: 'PBKDF2' }, false, ['deriveBits']);
+            const derivedBits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: PBKDF2_HASH }, keyMaterial, 256);
+            const hashB64 = bytesToBase64(new Uint8Array(derivedBits));
+            const saltB64Out = bytesToBase64(salt);
+            return `pbkdf2$${PBKDF2_ITERATIONS}$${saltB64Out}$${hashB64}`;
+        }
+        async function pbkdf2Verify(password, stored) {
+            try {
+                if (!stored || typeof stored !== 'string' || !stored.startsWith('pbkdf2$')) return false;
+                const parts = stored.split('$');
+                const iterations = parseInt(parts[1], 10);
+                const saltB64 = parts[2];
+                const expectedHashB64 = parts[3];
+                const salt = base64ToBytes(saltB64);
+                const keyMaterial = await crypto.subtle.importKey('raw', strToBytes(password), { name: 'PBKDF2' }, false, ['deriveBits']);
+                const derivedBits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: iterations || PBKDF2_ITERATIONS, hash: PBKDF2_HASH }, keyMaterial, 256);
+                const hashB64 = bytesToBase64(new Uint8Array(derivedBits));
+                return hashB64 === expectedHashB64;
+            } catch (e) {
+                console.warn('Error verificando PBKDF2:', e);
+                return false;
+            }
+        }
+
+        function getDeviceId() {
+            let parentHasFn = false;
+            try {
+                parentHasFn = (window.parent && window.parent !== window && typeof window.parent.getDeviceId === 'function');
+            } catch (e) {
+                parentHasFn = false;
+            }
+            if (parentHasFn) {
+                try { return window.parent.getDeviceId(); } catch (err) {
+                    console.warn('RBAC: getDeviceId del contenedor no disponible:', err);
+                }
+            }
+            let deviceId = localStorage.getItem('rbacDeviceId');
+            if (!deviceId) {
+                deviceId = 'rbac-' + Math.random().toString(36).slice(2, 9) + '-' + Date.now();
+                localStorage.setItem('rbacDeviceId', deviceId);
+            }
+            return deviceId;
+        }
+
+    let allUsers = [], allRoles = [], allPermissions = [], rolePermissionsMap = {}, currentUser = null, currentRoleIdForPermissions = null;
+    const PAGE_SIZE = 6;
+    let userFilter = '', userPage = 1;
+    let roleFilter = '', rolePage = 1;
+    let permFilter = '', permPage = 1;
 
         // --- DOM Elements ---
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -109,7 +280,8 @@
         const welcomeMessage = document.getElementById('welcome-message');
         const logoutButton = document.getElementById('logout-button');
         const userTableBody = document.getElementById('user-table-body');
-        const createUserBtn = document.getElementById('create-user-btn');
+    const createUserBtn = document.getElementById('create-user-btn');
+    const resetPasswordsBtn = document.getElementById('reset-passwords-btn');
         const roleTableBody = document.getElementById('role-table-body');
         const createRoleBtn = document.getElementById('create-role-btn');
         const permissionTableBody = document.getElementById('permission-table-body');
@@ -120,19 +292,115 @@
         const assignPermissionModal = document.getElementById('assign-permission-modal');
 
         // --- CORE LOGIC ---
+        function ensureFirebaseAuth() {
+            const existingUser = firebase.auth().currentUser;
+            if (existingUser) return Promise.resolve(existingUser);
+            if (!authInitializationPromise) {
+                authInitializationPromise = firebase.auth().signInAnonymously()
+                    .catch(error => {
+                        console.error('RBAC: error iniciando sesión anónima:', error);
+                        authInitializationPromise = null;
+                        throw error;
+                    });
+            }
+            return authInitializationPromise.then(cred => cred.user || firebase.auth().currentUser);
+        }
+
+        function applyParentContext(data) {
+            const parentUser = data.appUser || (data.type === 'setCurrentUser' ? data.user : null);
+            if (!parentUser) return;
+            currentUser = parentUser;
+            if (data.permissions) {
+                currentUser.permissions = Array.isArray(data.permissions) ? data.permissions : [];
+            }
+            if (data.roles) {
+                currentUser.roles = Array.isArray(data.roles) ? data.roles : [];
+            }
+            const displayName = currentUser.name || currentUser.displayName || 'Usuario';
+            welcomeMessage.textContent = `Conectado como ${displayName}`;
+            loginSection.classList.add('hidden');
+            adminSection.classList.remove('hidden');
+            renderUserTable();
+            renderRoleTable();
+            renderPermissionTable();
+            toggleLoading(false);
+            waitingForParentContext = false;
+            const isInIframe = window !== window.parent;
+            if (isInIframe && currentUser.id) {
+                try { window.parent.postMessage({ type: 'currentUserReceived', userId: currentUser.id }, '*'); } catch (err) { console.warn('rbac: no se pudo enviar ACK al padre', err); }
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 toggleLoading(true);
                 setupModalTemplates();
                 setupEventListeners();
-                
+                await ensureFirebaseAuth();
                 await migrateDataStructure();
                 await ensureBaseData();
-                
+
                 listenForRoleChanges();
                 listenForPermissionChanges();
                 listenForRolePermissionChanges(); // <-- Añadido
                 listenForUserChanges(); 
+                // Si estamos embebidos en un iframe, solicitar currentUser al padre para auto-login
+                const isInIframe = window !== window.parent;
+                let waitForParentTimer = null;
+                let unsubscribeActiveSession = null;
+                if (isInIframe) {
+                    try {
+                        // En modo embebido, ocultar la UI de login local y mostrar solo loading hasta recibir usuario
+                        loginSection.classList.add('hidden');
+                        adminSection.classList.add('hidden');
+                        toggleLoading(true);
+                        window.parent.postMessage({ type: 'requestUserData' }, '*');
+                        window.parent.postMessage({ type: 'requestCurrentUser' }, '*');
+                    } catch (e) { console.warn('No se pudo solicitar currentUser al padre:', e); }
+                    // Fallback: esperar un poco más y además intentar leer active_sessions/{deviceId}
+                    waitForParentTimer = setTimeout(() => { toggleLoading(true); }, 2500);
+                    try { const deviceId = getDeviceId(); unsubscribeActiveSession = subscribeActiveSession(deviceId); } catch(e) { console.warn('rbac: no se pudo subscribir a active_session', e); }
+                    // En modo embebido, ocultar el botón de Cerrar Sesión del panel interno (la sesión la controla el padre)
+                    try { logoutButton.style.display = 'none'; } catch(e) {}
+                    waitingForParentContext = true;
+                }
+
+                window.addEventListener('message', (ev) => {
+                    try {
+                        const data = ev.data || {};
+                        if (data && (data.type === 'setCurrentUser' || data.type === 'hostAuthReady')) {
+                            appReady = true;
+                            if (waitForParentTimer) { clearTimeout(waitForParentTimer); waitForParentTimer = null; }
+                            applyParentContext(data);
+                        }
+                        if (data && data.type === 'noCurrentUserYet') {
+                            // Si ya tenemos currentUser, ignorar señales tardías para no reactivar el overlay
+                            if (currentUser) return;
+                            // extender la espera antes de habilitar cualquier fallback visual
+                            if (waitForParentTimer) {
+                                clearTimeout(waitForParentTimer);
+                                waitForParentTimer = setTimeout(() => { toggleLoading(true); }, 8000);
+                            }
+                        }
+                                if (data && data.type === 'parentLoggedOut') {
+                                    appReady = false;
+                            console.log('rbac: parentLoggedOut recibido -> limpiar estado local');
+                            try { if (waitForParentTimer) { clearTimeout(waitForParentTimer); waitForParentTimer = null; } } catch(e) {}
+                            try { if (unsubscribeActiveSession) { unsubscribeActiveSession(); unsubscribeActiveSession = null; } } catch(e) {}
+                            currentUser = null;
+                            adminSection.classList.add('hidden');
+                            if (isInIframe) {
+                                // en modo embebido volvemos a modo espera, no mostramos login local
+                                loginSection.classList.add('hidden');
+                                        waitingForParentContext = true;
+                                        toggleLoading(true);
+                            } else {
+                                loginSection.classList.remove('hidden');
+                                toggleLoading(false);
+                            }
+                        }
+                    } catch (err) { console.warn('Mensaje inválido en RBAC panel', err); }
+                }, false);
             } catch (error) {
                 console.error("Error fatal durante la inicialización:", error);
                 document.body.innerHTML = `<div class="p-4 text-center text-red-700 bg-red-100">Error al cargar la aplicación. Revise la consola.</div>`;
@@ -169,14 +437,30 @@
         async function ensureBaseData() {
             const batch = db.batch();
             
-            // 1. Define Roles and Permissions Structure
+            // 1. Definición de Roles y Permisos (actualizados a módulos vigentes)
             const predefinedRoles = {
-                'Administrador': [], // All permissions will be added later
-                'Supervisor': ['view_dashboard', 'view_kpis', 'view_realtime_activity', 'view_productivity_charts', 'view_paused_tasks', 'reassign_task', 'view_activity_details', 'view_part_requests', 'update_part_request_status', 'manage_users'],
-                'Técnico': ['view_dashboard', 'view_kpis', 'view_realtime_activity']
+                'Administrador': [], // Se completa luego con todos los permisos
+                'Supervisor': [
+                    // Dashboard y Productividad
+                    'view_dashboard','view_kpis','view_realtime_activity','view_productivity_charts','view_paused_tasks','view_activity_details','reassign_task',
+                    // Inventario
+                    'view_items_search','manage_items',
+                    // Clientes
+                    'manage_clients',
+                    // Repuestos
+                    'view_part_requests','update_part_request_status',
+                    // Usuarios (gestión básica, no roles/permisos)
+                    'manage_users'
+                ],
+                'Técnico': [
+                    'view_dashboard','view_kpis','view_realtime_activity',
+                    // Navegación/consulta de inventario
+                    'view_items_search'
+                ]
             };
 
             const predefinedPermissions = [
+                // Dashboard / Productividad
                 { key: 'view_dashboard', description: 'Ver el dashboard completo', module: 'Dashboard' },
                 { key: 'view_kpis', description: 'Ver los indicadores clave (KPIs)', module: 'Dashboard' },
                 { key: 'view_realtime_activity', description: 'Ver la actividad en tiempo real', module: 'Dashboard' },
@@ -184,13 +468,32 @@
                 { key: 'view_paused_tasks', description: 'Ver la lista de tareas en pausa', module: 'Tareas' },
                 { key: 'reassign_task', description: 'Reasignar una tarea a otro técnico o a la piscina', module: 'Tareas' },
                 { key: 'view_activity_details', description: 'Ver los detalles completos de una actividad', module: 'Tareas' },
+                // Repuestos
                 { key: 'view_part_requests', description: 'Ver la lista de solicitudes de repuestos', module: 'Repuestos' },
                 { key: 'update_part_request_status', description: 'Cambiar el estado de una solicitud de repuesto', module: 'Repuestos' },
+                // Administración general
                 { key: 'manage_users', description: 'Crear, editar y gestionar usuarios', module: 'Administración' },
-                { key: 'manage_roles_permissions', description: 'Gestionar roles y asignar permisos', module: 'Administración' }
+                { key: 'manage_roles_permissions', description: 'Gestionar roles y asignar permisos', module: 'Administración' },
+                // Inventario (ítems)
+                { key: 'view_items_search', description: 'Buscar y ver ítems del inventario', module: 'Inventario' },
+                { key: 'manage_items', description: 'Crear y editar ítems', module: 'Inventario' },
+                { key: 'delete_items', description: 'Eliminar ítems del inventario', module: 'Inventario' },
+                { key: 'delete_item_media', description: 'Eliminar archivos multimedia/documentos de ítems', module: 'Inventario' },
+                // Taxonomía (categorías y atributos)
+                { key: 'manage_items_taxonomy', description: 'Gestionar categorías y atributos de inventario', module: 'Taxonomía' },
+                // Clientes
+                { key: 'manage_clients', description: 'Crear, editar y administrar clientes', module: 'Clientes' },
+                // Presencia y registros
+                { key: 'view_presence_dashboard', description: 'Ver panel de presencia', module: 'Presencia' },
+                { key: 'view_activity_logs', description: 'Ver bitácora/historial de actividad', module: 'Registros' },
+                // Tasas/Impuestos
+                { key: 'manage_taxes', description: 'Gestionar tasas e impuestos', module: 'Tasas/Impuestos' },
+                // Configuración auxiliar
+                { key: 'manage_image_title_presets', description: 'Gestionar presets de títulos de imágenes', module: 'Configuración' },
+                { key: 'view_incomplete_items', description: 'Ver reporte de ítems con datos faltantes', module: 'Inventario' }
             ];
 
-            // Add all permissions to the admin role
+            // El rol Administrador obtiene todos los permisos
             predefinedRoles['Administrador'] = predefinedPermissions.map(p => p.key);
 
             // 2. Create Permissions if they don't exist
@@ -245,7 +548,8 @@
                 batch.set(employeesCol.doc(), { 
                     name: 'Juan Lai', 
                     is_active: true, 
-                    passwordHash: 'hash_simulado_para_admin123', 
+                    // No establecer contraseña por defecto para forzar primer inicio seguro
+                    passwordHash: null,
                     order: 0, 
                     rol_ids: [adminRoleId] 
                 });
@@ -266,7 +570,9 @@
                 allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 populateUserDropdown();
                 if (currentUser) renderUserTable();
-                toggleLoading(false);
+                if (!waitingForParentContext) {
+                    toggleLoading(false);
+                }
             }, error => {
                 console.error("Error al cargar usuarios: ", error);
                 toggleLoading(false);
@@ -327,62 +633,261 @@
 
         function renderUserTable() {
             userTableBody.innerHTML = '';
-            allUsers.forEach((user, index) => {
+            const filtered = allUsers.filter(u => {
+                if (!userFilter) return true;
+                const name = (u.name || '').toLowerCase();
+                const rolesText = ((u.rol_ids || []).map(rid => (allRoles.find(r => r.id === rid)?.name || '')).join(' ') || '').toLowerCase();
+                return name.includes(userFilter) || rolesText.includes(userFilter);
+            });
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            if (userPage > totalPages) userPage = totalPages;
+            const start = (userPage - 1) * PAGE_SIZE;
+            const pageItems = filtered.slice(start, start + PAGE_SIZE);
+
+            pageItems.forEach((user, indexOnPage) => {
+                const index = start + indexOnPage;
                 const userRoles = (user.rol_ids || []).map(roleId => {
                     const role = allRoles.find(r => r.id === roleId);
                     return role ? `<span class="bg-gray-200 text-gray-700 text-xs font-semibold px-2 py-1 rounded-full">${role.name}</span>` : '';
                 }).filter(Boolean).join('');
 
                 const row = document.createElement('tr');
-                row.className = 'border-b hover:bg-gray-50';
+                row.className = 'border-b hover:bg-gray-50 align-middle';
                 const statusClass = user.is_active ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
+                const hasPassword = !!user.passwordHash;
+                const passwordBadge = hasPassword
+                    ? `<span class="ml-2 text-green-600" title="Contraseña configurada">🔒</span>`
+                    : `<span class="ml-2 text-red-500" title="Sin contraseña">🔓</span>`;
                 row.innerHTML = `
-                    <td class="py-3 px-4 flex items-center gap-2">
-                        <button class="move-up-btn text-gray-500 hover:text-blue-600 disabled:opacity-25" data-index="${index}" ${index === 0 ? 'disabled' : ''}>&#9650;</button>
-                        <button class="move-down-btn text-gray-500 hover:text-blue-600 disabled:opacity-25" data-index="${index}" ${index === allUsers.length - 1 ? 'disabled' : ''}>&#9660;</button>
+                    <td class="py-3 px-4 text-center align-middle">
+                        <div class="flex items-center justify-center gap-2">
+                        <button class="move-up-btn inline-flex w-8 h-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 hover:text-gray-900 hover:border-gray-400 disabled:opacity-30" data-index="${index}" ${index === 0 ? 'disabled' : ''} title="Subir posición">
+                            <i class="fa-solid fa-chevron-up"></i>
+                        </button>
+                        <button class="move-down-btn inline-flex w-8 h-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 hover:text-gray-900 hover:border-gray-400 disabled:opacity-30" data-index="${index}" ${index === allUsers.length - 1 ? 'disabled' : ''} title="Bajar posición">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        </div>
                     </td>
-                    <td class="py-3 px-4">${user.name}</td>
+                    <td class="py-3 px-4 text-center align-middle"><span class="inline-flex items-center justify-center">${user.name}${passwordBadge}</span></td>
                     <td class="py-3 px-4"><div class="flex flex-wrap gap-1">${userRoles || 'No asignado'}</div></td>
                     <td class="py-3 px-4 text-center"><span class="px-2 py-1 text-xs font-semibold rounded-full ${statusClass}">${user.is_active ? 'Habilitado' : 'Deshabilitado'}</span></td>
-                    <td class="py-3 px-4 text-center space-x-2">
-                        <button class="edit-user-btn bg-blue-500 hover:bg-blue-600 text-white text-sm py-1 px-3 rounded" data-id="${user.id}">Editar</button>
-                        <button class="toggle-user-btn ${user.is_active ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white text-sm py-1 px-3 rounded" data-id="${user.id}">${user.is_active ? 'Deshabilitar' : 'Habilitar'}</button>
+                    <td class="py-3 px-4 text-center">
+                        <div class="btn-group no-wrap-actions table-actions">
+                            <button class="edit-user-btn bg-gray-600 hover:bg-gray-700 text-white text-sm rounded" data-id="${user.id}">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                                <span class="btn-text">Editar</span>
+                            </button>
+                            <button class="reset-pass-btn bg-purple-600 hover:bg-purple-700 text-white text-sm rounded" data-id="${user.id}" title="Poner contraseña en null para este usuario">
+                                <i class="fa-solid fa-key"></i>
+                                <span class="btn-text">Reset Contraseña</span>
+                            </button>
+                            <button class="toggle-user-btn ${user.is_active ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-700 hover:bg-gray-800'} text-white text-sm rounded" data-id="${user.id}">
+                                ${user.is_active ? '<i class="fa-solid fa-user-slash"></i><span class="btn-text">Deshabilitar</span>' : '<i class="fa-solid fa-user-check"></i><span class="btn-text">Habilitar</span>'}
+                            </button>
+                        </div>
                     </td>`;
                 userTableBody.appendChild(row);
             });
+            // También renderizar tarjetas en vista móvil con el mismo subconjunto
+            renderUserCards(filtered, start, pageItems);
+            // Paginación
+            renderPagination('user-pagination', userPage, totalPages, (newPage) => { userPage = newPage; renderUserTable(); });
+            if (filtered.length === 0) {
+                userTableBody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-gray-500">Sin resultados</td></tr>';
+                const cards = document.getElementById('user-cards');
+                if (cards) cards.innerHTML = '<div class="text-center text-gray-500">Sin resultados</div>';
+            }
+        }
+
+        function renderUserCards(filteredAll, start, pageItems) {
+            const container = document.getElementById('user-cards');
+            if (!container) return;
+            container.innerHTML = '';
+            const source = Array.isArray(pageItems) ? pageItems : allUsers.slice(0, PAGE_SIZE);
+            source.forEach((user, index) => {
+                const userRolesBadges = (user.rol_ids || []).map(roleId => {
+                    const role = allRoles.find(r => r.id === roleId);
+                    return role ? `<span class=\"bg-gray-200 text-gray-700 text-xs font-semibold px-2 py-1 rounded-full\">${role.name}</span>` : '';
+                }).filter(Boolean).join('');
+                const statusBadge = user.is_active ? '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-200 text-green-800">Habilitado</span>' : '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-200 text-red-800">Deshabilitado</span>';
+                const hasPassword = !!user.passwordHash;
+                const passwordBadge = hasPassword ? '<span class="ml-2 text-green-600" title="Contraseña configurada">🔒</span>' : '<span class="ml-2 text-red-500" title="Sin contraseña">🔓</span>';
+                const card = document.createElement('div');
+                card.className = 'bg-gray-50 border rounded-lg p-4 flex flex-col gap-3';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between gap-4 flex-col md:flex-row">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <div class="font-semibold text-gray-800 truncate">${user.name}${passwordBadge}</div>
+                                <div>${statusBadge}</div>
+                            </div>
+                            <div class="mt-2 flex flex-wrap gap-1">${userRolesBadges || '<span class=\"text-gray-500\">No asignado</span>'}</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="move-up-btn inline-flex w-8 h-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 hover:text-gray-900 hover:border-gray-400 disabled:opacity-30" data-index="${(start||0)+index}" ${((start||0)+index) === 0 ? 'disabled' : ''} title="Subir posición">
+                                <i class="fa-solid fa-chevron-up"></i>
+                            </button>
+                            <button class="move-down-btn inline-flex w-8 h-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 hover:text-gray-900 hover:border-gray-400 disabled:opacity-30" data-index="${(start||0)+index}" ${((start||0)+index) === allUsers.length - 1 ? 'disabled' : ''} title="Bajar posición">
+                                <i class="fa-solid fa-chevron-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="btn-group justify-center md:justify-end">
+                        <button class="edit-user-btn bg-gray-600 hover:bg-gray-700 text-white text-sm rounded" data-id="${user.id}">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                            <span class="btn-text">Editar</span>
+                        </button>
+                        <button class="reset-pass-btn bg-purple-600 hover:bg-purple-700 text-white text-sm rounded" data-id="${user.id}" title="Poner contraseña en null para este usuario">
+                            <i class="fa-solid fa-key"></i>
+                            <span class="btn-text">Reset</span>
+                        </button>
+                        <button class="toggle-user-btn ${user.is_active ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-700 hover:bg-gray-800'} text-white text-sm rounded" data-id="${user.id}">
+                            ${user.is_active ? '<i class="fa-solid fa-user-slash"></i><span class="btn-text">Deshabilitar</span>' : '<i class="fa-solid fa-user-check"></i><span class="btn-text">Habilitar</span>'}
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+            // Delegar eventos una sola vez
+            if (!container.dataset.listenerAttached) {
+                container.addEventListener('click', handleUserTableClick);
+                container.dataset.listenerAttached = 'true';
+            }
         }
 
         function renderRoleTable() {
             roleTableBody.innerHTML = '';
-            allRoles.forEach(role => {
+            const filtered = allRoles.filter(r => !roleFilter || (r.name || '').toLowerCase().includes(roleFilter));
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            if (rolePage > totalPages) rolePage = totalPages;
+            const start = (rolePage - 1) * PAGE_SIZE;
+            const pageItems = filtered.slice(start, start + PAGE_SIZE);
+
+            pageItems.forEach(role => {
                 const row = document.createElement('tr');
                 row.className = 'border-b hover:bg-gray-50';
                 row.innerHTML = `
                     <td class="py-3 px-4">${role.name}</td>
-                    <td class="py-3 px-4 text-center space-x-2">
-                        <button class="assign-perm-btn bg-cyan-500 hover:bg-cyan-600 text-white text-sm py-1 px-3 rounded" data-id="${role.id}" data-name="${role.name}">Permisos</button>
-                        <button class="edit-role-btn bg-blue-500 hover:bg-blue-600 text-white text-sm py-1 px-3 rounded" data-id="${role.id}">Editar</button>
-                        <button class="delete-role-btn bg-red-500 hover:bg-red-600 text-white text-sm py-1 px-3 rounded" data-id="${role.id}" data-name="${role.name}">Eliminar</button>
+                    <td class="py-3 px-4 text-center">
+                        <div class="btn-group no-wrap-actions table-actions">
+                            <button class="assign-perm-btn bg-gray-700 hover:bg-gray-800 text-white text-sm rounded" data-id="${role.id}" data-name="${role.name}">
+                                <i class="fa-solid fa-shield-halved"></i>
+                                <span class="btn-text">Permisos</span>
+                            </button>
+                            <button class="edit-role-btn bg-gray-600 hover:bg-gray-700 text-white text-sm rounded" data-id="${role.id}">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                                <span class="btn-text">Editar</span>
+                            </button>
+                            <button class="delete-role-btn bg-red-600 hover:bg-red-700 text-white text-sm rounded" data-id="${role.id}" data-name="${role.name}">
+                                <i class="fa-solid fa-trash"></i>
+                                <span class="btn-text">Eliminar</span>
+                            </button>
+                        </div>
                     </td>`;
                 roleTableBody.appendChild(row);
             });
+            renderPagination('role-pagination', rolePage, totalPages, (newPage) => { rolePage = newPage; renderRoleTable(); });
+            if (filtered.length === 0) {
+                roleTableBody.innerHTML = '<tr><td colspan="2" class="py-4 text-center text-gray-500">Sin resultados</td></tr>';
+            }
         }
 
-        function renderPermissionTable() {
-             permissionTableBody.innerHTML = '';
-             allPermissions.forEach(perm => {
+          function renderPermissionTable() {
+                 permissionTableBody.innerHTML = '';
+                 const filtered = allPermissions.filter(p => {
+                     if (!permFilter) return true;
+                     const k = (p.key || '').toLowerCase();
+                     const d = (p.description || '').toLowerCase();
+                     const m = (p.module || '').toLowerCase();
+                     return k.includes(permFilter) || d.includes(permFilter) || m.includes(permFilter);
+                 });
+                 const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+                 if (permPage > totalPages) permPage = totalPages;
+                 const start = (permPage - 1) * PAGE_SIZE;
+                 const pageItems = filtered.slice(start, start + PAGE_SIZE);
+
+                 pageItems.forEach(perm => {
                 const row = document.createElement('tr');
                 row.className = 'border-b hover:bg-gray-50';
                 row.innerHTML = `
                     <td class="py-3 px-4 font-mono text-sm">${perm.key}</td>
                     <td class="py-3 px-4">${perm.description}</td>
                     <td class="py-3 px-4">${perm.module}</td>
-                    <td class="py-3 px-4 text-center space-x-2">
-                        <button class="edit-perm-btn bg-blue-500 hover:bg-blue-600 text-white text-sm py-1 px-3 rounded" data-id="${perm.id}">Editar</button>
-                        <button class="delete-perm-btn bg-red-500 hover:bg-red-600 text-white text-sm py-1 px-3 rounded" data-id="${perm.id}" data-name="${perm.key}">Eliminar</button>
+                    <td class="py-3 px-4 text-center">
+                        <div class="btn-group no-wrap-actions table-actions">
+                            <button class="edit-perm-btn bg-gray-600 hover:bg-gray-700 text-white text-sm rounded" data-id="${perm.id}">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                                <span class="btn-text">Editar</span>
+                            </button>
+                            <button class="delete-perm-btn bg-red-600 hover:bg-red-700 text-white text-sm rounded" data-id="${perm.id}" data-name="${perm.key}">
+                                <i class="fa-solid fa-trash"></i>
+                                <span class="btn-text">Eliminar</span>
+                            </button>
+                        </div>
                     </td>`;
                 permissionTableBody.appendChild(row);
             });
+            renderPermissionCards(pageItems);
+            renderPagination('permission-pagination', permPage, totalPages, (newPage) => { permPage = newPage; renderPermissionTable(); });
+            if (filtered.length === 0) {
+                permissionTableBody.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-gray-500">Sin resultados</td></tr>';
+                const pcards = document.getElementById('permission-cards');
+                if (pcards) pcards.innerHTML = '<div class="text-center text-gray-500">Sin resultados</div>';
+            }
+        }
+
+        function renderPermissionCards(pageItems) {
+            const container = document.getElementById('permission-cards');
+            if (!container) return;
+            container.innerHTML = '';
+            const source = Array.isArray(pageItems) ? pageItems : allPermissions.slice(0, PAGE_SIZE);
+            source.forEach(perm => {
+                const card = document.createElement('div');
+                card.className = 'bg-gray-50 border rounded-lg p-4 flex flex-col gap-3';
+                card.innerHTML = `
+                    <div class="font-mono text-sm text-gray-800">${perm.key}</div>
+                    <div class="text-gray-700">${perm.description}</div>
+                    <div><span class="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-800">${perm.module}</span></div>
+                    <div class="btn-group justify-center md:justify-end">
+                        <button class="edit-perm-btn bg-gray-600 hover:bg-gray-700 text-white text-sm rounded" data-id="${perm.id}">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                            <span class="btn-text">Editar</span>
+                        </button>
+                        <button class="delete-perm-btn bg-red-600 hover:bg-red-700 text-white text-sm rounded" data-id="${perm.id}" data-name="${perm.key}">
+                            <i class="fa-solid fa-trash"></i>
+                            <span class="btn-text">Eliminar</span>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+            if (!container.dataset.listenerAttached) {
+                container.addEventListener('click', handlePermissionTableClick);
+                container.dataset.listenerAttached = 'true';
+            }
+        }
+
+        function renderPagination(containerId, current, total, onChange) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+            const prev = document.createElement('button');
+            prev.className = 'bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded disabled:opacity-40';
+            prev.disabled = current <= 1;
+            prev.innerHTML = '<i class="fa-solid fa-chevron-left"></i> <span class="btn-text">Anterior</span>';
+            prev.addEventListener('click', () => onChange(Math.max(1, current - 1)));
+            const next = document.createElement('button');
+            next.className = 'bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded disabled:opacity-40';
+            next.disabled = current >= total;
+            next.innerHTML = '<span class="btn-text">Siguiente</span> <i class="fa-solid fa-chevron-right"></i>';
+            next.addEventListener('click', () => onChange(Math.min(total, current + 1)));
+            const label = document.createElement('span');
+            label.className = 'text-sm text-gray-600 select-none';
+            label.textContent = `Página ${current} de ${total}`;
+            container.appendChild(prev);
+            container.appendChild(label);
+            container.appendChild(next);
         }
 
         // --- SETUP FUNCTIONS ---
@@ -390,6 +895,19 @@
             loginForm.addEventListener('submit', handleLogin);
             logoutButton.addEventListener('click', handleLogout);
             createUserBtn.addEventListener('click', () => openUserModal('create'));
+            resetPasswordsBtn.addEventListener('click', async () => {
+                if (!confirm('Esto eliminará la contraseña (passwordHash) de TODOS los usuarios. ¿Desea continuar?')) return;
+                try {
+                    const snap = await employeesCol.get();
+                    const batch = db.batch();
+                    snap.forEach(doc => batch.update(doc.ref, { passwordHash: null }));
+                    await batch.commit();
+                    alert('Contraseñas reseteadas. Cada usuario deberá establecer una nueva en el primer inicio.');
+                } catch (e) {
+                    console.error('Error reseteando contraseñas:', e);
+                    alert('No se pudo resetear las contraseñas. Revise la consola.');
+                }
+            });
             userTableBody.addEventListener('click', handleUserTableClick);
             document.getElementById('user-form').addEventListener('submit', handleUserFormSubmit);
             createRoleBtn.addEventListener('click', () => openRoleModal('create'));
@@ -400,6 +918,14 @@
             document.getElementById('permission-form').addEventListener('submit', handlePermissionFormSubmit);
             assignPermissionModal.querySelector('#cancel-assign-btn').addEventListener('click', closeAssignPermissionModal);
             assignPermissionModal.querySelector('#save-assign-btn').addEventListener('click', handleSaveRolePermissions);
+
+            // Buscadores
+            const userSearch = document.getElementById('user-search-input');
+            if (userSearch) userSearch.addEventListener('input', (e) => { userFilter = (e.target.value || '').toLowerCase(); userPage = 1; renderUserTable(); });
+            const roleSearch = document.getElementById('role-search-input');
+            if (roleSearch) roleSearch.addEventListener('input', (e) => { roleFilter = (e.target.value || '').toLowerCase(); rolePage = 1; renderRoleTable(); });
+            const permSearch = document.getElementById('perm-search-input');
+            if (permSearch) permSearch.addEventListener('input', (e) => { permFilter = (e.target.value || '').toLowerCase(); permPage = 1; renderPermissionTable(); });
         }
 
         function setupModalTemplates() {
@@ -428,12 +954,19 @@
                     </div>
                 </div>
                 <div class="mb-6">
-                    <label class="flex items-center"><input type="checkbox" id="enabled-checkbox" class="form-checkbox h-5 w-5 text-blue-600"><span class="ml-2 text-sm">Usuario Habilitado</span></label>
+                    <label class="flex items-center"><input type="checkbox" id="enabled-checkbox" class="form-checkbox h-5 w-5 text-purple-600"><span class="ml-2 text-sm">Usuario Habilitado</span></label>
                 </div>
-                <div id="modal-error-message" class="text-red-500 text-sm mb-4 h-4 text-center"></div>
-                <div class="flex justify-end space-x-4">
-                    <button type="button" class="cancel-modal-btn bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Cancelar</button>
-                    <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Guardar Cambios</button>
+                <div id="modal-error-message" class="text-red-500 text-sm mb-1 h-4 text-center"></div>
+                <div id="modal-success-message" class="text-green-600 text-sm mb-4 h-4 text-center"></div>
+                <div class="btn-row modal-actions justify-end gap-3">
+                    <button type="button" class="cancel-modal-btn bg-gray-500 hover:bg-gray-600 text-white">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span class="btn-text">Cancelar</span>
+                    </button>
+                    <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span class="btn-text">Guardar Cambios</span>
+                    </button>
                 </div>`;
 
             document.getElementById('role-form').innerHTML = `
@@ -443,9 +976,15 @@
                     <input type="text" id="role-name-input" class="shadow appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline" required>
                 </div>
                 <div id="role-modal-error" class="text-red-500 text-sm mb-4 h-4 text-center"></div>
-                <div class="flex justify-end space-x-4">
-                    <button type="button" class="cancel-modal-btn bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Cancelar</button>
-                    <button type="submit" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">Guardar Rol</button>
+                <div class="btn-row modal-actions justify-end gap-3">
+                    <button type="button" class="cancel-modal-btn bg-gray-500 hover:bg-gray-600 text-white">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span class="btn-text">Cancelar</span>
+                    </button>
+                    <button type="submit" class="bg-purple-500 hover:bg-purple-700 text-white">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span class="btn-text">Guardar Rol</span>
+                    </button>
                 </div>`;
             
             document.getElementById('permission-form').innerHTML = `
@@ -463,9 +1002,15 @@
                     <input type="text" id="permission-module-input" placeholder="ej: Administración" class="shadow appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline" required>
                 </div>
                 <div id="permission-modal-error" class="text-red-500 text-sm mb-4 h-4 text-center"></div>
-                <div class="flex justify-end space-x-4">
-                    <button type="button" class="cancel-modal-btn bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Cancelar</button>
-                    <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Guardar Función</button>
+                <div class="btn-row modal-actions justify-end gap-3">
+                    <button type="button" class="cancel-modal-btn bg-gray-500 hover:bg-gray-600 text-white">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span class="btn-text">Cancelar</span>
+                    </button>
+                    <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span class="btn-text">Guardar Función</span>
+                    </button>
                 </div>`;
             
             document.querySelectorAll('.cancel-modal-btn').forEach(btn => btn.addEventListener('click', () => {
@@ -490,14 +1035,37 @@
             if (!user) { loginMessage.textContent = 'Usuario no encontrado.'; return; }
             if (!user.is_active) { loginMessage.textContent = 'Este usuario está deshabilitado.'; return; }
             
-            let isAuthenticated = (user.name === 'Juan Lai' && passwordInput.value === 'admin123');
-            
-            // --- FIX ---
-            // Modificado para comprobar la contraseña guardada (simulada)
-            if (!isAuthenticated && user.passwordHash) {
-                isAuthenticated = (user.passwordHash === `hash_simulado_para_${passwordInput.value}`);
+            const entered = (passwordInput.value || '').trim();
+            let isAuthenticated = false;
+            const stored = user.passwordHash;
+            if (!stored || typeof stored !== 'string' || !stored.startsWith('pbkdf2$')) {
+                loginMessage.textContent = 'Este usuario no tiene contraseña válida. Edítelo y establezca una.';
+                return;
             }
-            // --- END FIX ---
+            if (entered) {
+                // Verificar PBKDF2
+                pbkdf2Verify(entered, stored).then(ok => {
+                    if (ok) {
+                        currentUser = user; 
+                        loginMessage.textContent = ''; 
+                        passwordInput.value = '';
+                        loginSection.classList.add('hidden');
+                        adminSection.classList.remove('hidden');
+                        welcomeMessage.textContent = `Bienvenido/a, ${user.name}.`;
+                        renderUserTable();
+                        renderRoleTable();
+                        renderPermissionTable();
+                    } else {
+                        loginMessage.textContent = 'Contraseña incorrecta.';
+                    }
+                }).catch(() => {
+                    loginMessage.textContent = 'Error validando contraseña.';
+                });
+                return;
+            } else {
+                loginMessage.textContent = 'Ingrese su contraseña.';
+                return;
+            }
 
             if (isAuthenticated) {
                 currentUser = user; 
@@ -526,6 +1094,19 @@
             const userIndex = parseInt(target.dataset.index, 10);
 
             if (target.classList.contains('edit-user-btn')) openUserModal('edit', userId);
+            if (target.classList.contains('reset-pass-btn')) {
+                const user = allUsers.find(u => u.id === userId);
+                if (!user) return;
+                if (!confirm(`¿Resetear contraseña de "${user.name}"?`)) return;
+                try {
+                    await employeesCol.doc(user.id).update({ passwordHash: null });
+                    alert('Contraseña reseteada. Al iniciar sesión, se pedirá establecer una nueva.');
+                } catch (e) {
+                    console.error('Error reseteando contraseña del usuario:', e);
+                    alert('No se pudo resetear la contraseña. Revise la consola.');
+                }
+                return;
+            }
             if (target.classList.contains('toggle-user-btn')) {
                 const user = allUsers.find(u => u.id === userId);
                 if (user.name === 'Juan Lai') {
@@ -591,13 +1172,15 @@
             const form = document.getElementById('user-form');
             form.reset();
             document.getElementById('modal-error-message').textContent = '';
+            const successMsg = document.getElementById('modal-success-message');
+            if (successMsg) successMsg.textContent = '';
             const modalTitle = document.getElementById('user-modal-title');
             const idInput = document.getElementById('user-id-input');
             const rolesContainer = document.getElementById('roles-checkbox-container');
             
             rolesContainer.innerHTML = allRoles.map(role => `
                 <label class="flex items-center space-x-2 p-1 rounded hover:bg-gray-100">
-                    <input type="checkbox" value="${role.id}" class="form-checkbox h-4 w-4 text-blue-600">
+                    <input type="checkbox" value="${role.id}" class="form-checkbox h-4 w-4 text-purple-600">
                     <span class="text-sm">${role.name}</span>
                 </label>
             `).join('');
@@ -676,7 +1259,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
                         ${perms.map(p => `
                             <label class="flex items-center space-x-2 p-2 rounded hover:bg-gray-100">
-                                <input type="checkbox" value="${p.id}" class="form-checkbox h-5 w-5 text-cyan-600 permission-checkbox">
+                                <input type="checkbox" value="${p.id}" class="form-checkbox h-5 w-5 text-purple-600 permission-checkbox">
                                 <span>${p.description}</span>
                             </label>
                         `).join('')}
@@ -702,29 +1285,53 @@
             e.preventDefault();
             const id = document.getElementById('user-id-input').value;
             const name = document.getElementById('username-input').value.trim();
-            const password = document.getElementById('password-modal-input').value;
-            const confirmPassword = document.getElementById('confirm-password-input').value;
+            const password = (document.getElementById('password-modal-input').value || '').trim();
+            const confirmPassword = (document.getElementById('confirm-password-input').value || '').trim();
             const rol_ids = Array.from(document.querySelectorAll('#roles-checkbox-container input:checked')).map(cb => cb.value);
             const is_active = document.getElementById('enabled-checkbox').checked;
             const errorMsg = document.getElementById('modal-error-message');
+            const successMsg = document.getElementById('modal-success-message');
+
+            // Limpiar mensajes previos
+            if (errorMsg) errorMsg.textContent = '';
+            if (successMsg) successMsg.textContent = '';
+
+            // Si intenta cambiar la contraseña, ambos campos deben llenarse
+            const oneFilled = (!!password && !confirmPassword) || (!password && !!confirmPassword);
+            if (oneFilled) {
+                errorMsg.textContent = 'Debe llenar ambos campos de contraseña.';
+                return;
+            }
 
             if (password !== confirmPassword) {
                 errorMsg.textContent = 'Las contraseñas no coinciden.';
                 return;
             }
-            if (id === '' && password === '') {
-                 errorMsg.textContent = 'La contraseña es obligatoria para nuevos usuarios.';
-                return;
-            }
+            // Permitir crear usuario sin contraseña: si ambos están vacíos y es nuevo, se acepta.
             
             const data = { name, rol_ids, is_active };
-            if (password) data.passwordHash = `hash_simulado_para_${password}`;
+            if (password) {
+                // Generar hash real PBKDF2
+                data.passwordHash = await pbkdf2Hash(password);
+            }
             if (!id) data.order = Date.now();
 
             try {
-                if (id) await employeesCol.doc(id).update(data);
-                else await employeesCol.add(data);
-                userModal.classList.add('hidden');
+                if (id) {
+                    await employeesCol.doc(id).update(data);
+                    if (password && successMsg) {
+                        // Mostrar etiqueta de éxito si se cambió la contraseña
+                        successMsg.textContent = 'Contraseña cambiada satisfactoriamente.';
+                        // Limpiar campos de contraseña luego del cambio
+                        document.getElementById('password-modal-input').value = '';
+                        document.getElementById('confirm-password-input').value = '';
+                    } else {
+                        userModal.classList.add('hidden');
+                    }
+                } else {
+                    await employeesCol.add(data);
+                    userModal.classList.add('hidden');
+                }
             } catch(err) {
                 console.error("Error guardando usuario: ", err);
                 errorMsg.textContent = 'Error al guardar. Verifique la consola.';

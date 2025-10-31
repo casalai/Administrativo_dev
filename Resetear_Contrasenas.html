@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resetear Contraseñas (employees.passwordHash = null)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #f8fafc; color: #0f172a; }
+    .card { max-width: 720px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.08); padding: 24px; }
+    .title { font-size: 22px; font-weight: 800; margin: 0 0 12px; }
+    .muted { color: #475569; }
+    .log { background: #0b1020; color: #cbd5e1; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 12px; border-radius: 8px; height: 220px; overflow: auto; font-size: 12px; }
+    .btn { appearance: none; border: 0; background: #2563eb; color: #fff; padding: 10px 16px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin: 10px 0; }
+    .ok { color: #16a34a; font-weight: 700; }
+    .err { color: #dc2626; font-weight: 700; }
+    .warn { color: #d97706; font-weight: 700; }
+    .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; background: #f1f5f9; }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+</head>
+<body>
+  <div class="card">
+    <h1 class="title">Resetear contraseñas de empleados</h1>
+    <p class="muted">Esta utilidad pone <strong>employees.passwordHash</strong> en <code>null</code> para todos los usuarios y elimina campos legacy (<code>hash_simulado</code>, <code>hash password</code>) si existieran.</p>
+    <div class="row">
+      <div>Estado: <span id="status" class="pill">Inicializando…</span></div>
+      <button id="runBtn" class="btn" disabled>Ejecutar reset</button>
+    </div>
+    <div class="row"><div>Empleados totales: <span id="tot">-</span></div><div>A actualizar: <span id="todo">-</span></div></div>
+    <pre id="log" class="log"></pre>
+  </div>
+
+  <script>
+    // Config Firebase (mismo proyecto usado en la app)
+    const firebaseConfig = {
+      apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+      authDomain: "sistema-productividad-equipo.firebaseapp.com",
+      projectId: "sistema-productividad-equipo",
+      storageBucket: "sistema-productividad-equipo.appspot.com",
+      messagingSenderId: "196802708765",
+      appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const employeesCol = db.collection('employees');
+
+    const $ = (id) => document.getElementById(id);
+    const log = (msg) => { const el = $('log'); el.textContent += msg + "\n"; el.scrollTop = el.scrollHeight; };
+    const setStatus = (text, cls) => { const s = $('status'); s.textContent = text; s.className = 'pill ' + (cls || ''); };
+
+    async function signIn() {
+      try {
+        const cred = await firebase.auth().signInAnonymously();
+        log(`[ok] Autenticado anon: ${cred.user && cred.user.uid}`);
+      } catch (e) {
+        log(`[err] No se pudo autenticar anónimamente: ${e && e.message}`);
+        setStatus('Fallo de autenticación', 'err');
+        throw e;
+      }
+    }
+
+    async function fetchEmployees() {
+      setStatus('Leyendo empleados…');
+      const snap = await employeesCol.get();
+      const docs = snap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() }));
+      const toUpdate = docs.filter(d => d.data.passwordHash !== null || d.data.hash_simulado !== undefined || d.data['hash password'] !== undefined);
+      $('tot').textContent = String(docs.length);
+      $('todo').textContent = String(toUpdate.length);
+      log(`[info] Empleados totales: ${docs.length}`);
+      log(`[info] Marcados para actualizar: ${toUpdate.length}`);
+      return { docs, toUpdate };
+    }
+
+    async function chunkedReset(toUpdate, chunkSize = 400) {
+      let done = 0;
+      for (let i = 0; i < toUpdate.length; i += chunkSize) {
+        const chunk = toUpdate.slice(i, i + chunkSize);
+        const batch = db.batch();
+        chunk.forEach(({ ref }) => {
+          batch.update(ref, {
+            passwordHash: null,
+            hash_simulado: firebase.firestore.FieldValue.delete(),
+            ['hash password']: firebase.firestore.FieldValue.delete(),
+          });
+        });
+        await batch.commit();
+        done += chunk.length;
+        log(`[ok] Batch aplicado: ${done}/${toUpdate.length}`);
+        setStatus(`Actualizando… ${done}/${toUpdate.length}`);
+      }
+    }
+
+    async function run() {
+      $('runBtn').disabled = true;
+      try {
+        await signIn();
+        const { toUpdate } = await fetchEmployees();
+        if (toUpdate.length === 0) {
+          setStatus('Nada para actualizar', 'ok');
+          log('[ok] No hay contraseñas que resetear.');
+          return;
+        }
+        await chunkedReset(toUpdate);
+        setStatus('Completado', 'ok');
+        log('[ok] Reset finalizado. Todos los passwordHash quedaron en null.');
+      } catch (e) {
+        log(`[err] Proceso detenido: ${e && e.message}`);
+        setStatus('Error', 'err');
+      } finally {
+        $('runBtn').disabled = false;
+      }
+    }
+
+    // Init
+    (async () => {
+      try {
+        setStatus('Preparado');
+        $('runBtn').disabled = false;
+        $('runBtn').onclick = run;
+      } catch (e) {
+        log('[err] No se pudo preparar la herramienta.');
+        setStatus('Error al iniciar', 'err');
+      }
+    })();
+  </script>
+</body>
+</html>

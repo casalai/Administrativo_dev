@@ -5,11 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Administración de Tareas</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
         .modal-backdrop { background-color: rgba(0, 0, 0, 0.75); }
         .time-input-container { transition: all 0.3s ease-in-out; }
+        /* Estándar de botones responsivos */
+        .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+        .btn-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        @media (max-width: 640px){
+            .btn-text { display: none; }
+            .btn-icon { margin-right: 0 !important; }
+        }
+        /* Reducir a icon-only un poco antes para evitar desborde en 2 columnas */
+        @media (max-width: 1024px){
+            .btn-text { display: none; }
+            .btn-icon { margin-right: 0 !important; }
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -29,19 +42,76 @@
             <h1 class="text-3xl font-bold text-gray-800">Panel de Administración de Tareas</h1>
             <p class="text-gray-500">Configuración de procesos, subprocesos y campos de datos personalizados del sistema.</p>
         </div>
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Parámetros del Sistema -->
+        <div class="bg-white p-6 rounded-xl shadow-lg overflow-hidden mb-8">
+            <div class="flex items-center justify-between">
+                <h2 class="text-2xl font-semibold text-gray-700">Parámetros del Sistema</h2>
+                <button id="sysparams-save-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg">Guardar</button>
+            </div>
+            <p class="text-gray-500 text-sm mt-1">Ajusta los pesos para el cálculo de puntos y el factor por minuto.</p>
+            <div id="sysparams-form" class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Peso Esfuerzo</label>
+                    <input type="number" step="1" id="param-weight-effort" class="mt-1 w-full p-2 border rounded-md" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Peso Dificultad</label>
+                    <input type="number" step="1" id="param-weight-difficulty" class="mt-1 w-full p-2 border rounded-md" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Peso Intelectualidad</label>
+                    <input type="number" step="1" id="param-weight-intellect" class="mt-1 w-full p-2 border rounded-md" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Factor puntos por minuto</label>
+                    <input type="number" step="0.1" id="param-time-factor" class="mt-1 w-full p-2 border rounded-md" />
+                </div>
+            </div>
+        </div>
+        <!-- Panel de Ayudas Pendientes -->
+        <div class="bg-white p-6 rounded-xl shadow-lg overflow-hidden mb-8">
+            <div class="flex items-center justify-between gap-2">
+                <h2 class="text-2xl font-semibold text-gray-700">Ayudas pendientes</h2>
+                <div class="flex items-center gap-2">
+                    <input id="help-pending-search" type="text" placeholder="Buscar..." class="text-sm border rounded px-2 py-1" />
+                    <span id="help-pending-count" class="text-sm text-gray-500"></span>
+                </div>
+            </div>
+            <p class="text-gray-500 text-sm mt-1">Lista de procesos, subprocesos y campos que no tienen ayuda creada o están en borrador.</p>
+            <div id="help-pending-list" class="mt-4 space-y-2 min-h-[44px]"></div>
+            <div id="help-pending-pagination" class="mt-3 flex items-center justify-end"></div>
+        </div>
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
             <!-- Columna de Procesos Principales -->
-            <div class="bg-white p-6 rounded-xl shadow-lg">
-                <h2 class="text-2xl font-semibold text-gray-700 mb-4">Procesos Principales</h2>
-                <div id="main-tasks-list" class="space-y-3 mb-6 min-h-[100px]"></div>
-                <button id="show-task-form-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition">+ Crear Nuevo Proceso</button>
+            <div class="bg-white p-6 rounded-xl shadow-lg overflow-hidden">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-2">Procesos Principales</h2>
+                <div class="mb-3"><input id="process-search-input" type="text" placeholder="Buscar proceso..." class="w-full md:w-1/2 border rounded px-3 py-2" /></div>
+                <div id="main-tasks-list" class="space-y-3 mb-3 min-h-[100px]"></div>
+                <div id="process-pagination" class="mb-6 flex items-center justify-end"></div>
+                <div class="btn-row justify-end">
+                    <div class="btn-group">
+                        <button id="show-task-form-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center">
+                            <i class="fa fa-plus btn-icon mr-2"></i>
+                            <span class="btn-text">Crear Nuevo Proceso</span>
+                        </button>
+                    </div>
+                </div>
                 <form id="task-form" class="mt-6 hidden bg-gray-50 p-4 rounded-lg border"></form>
             </div>
             <!-- Columna de Subprocesos -->
-            <div class="bg-white p-6 rounded-xl shadow-lg">
-                <h2 class="text-2xl font-semibold text-gray-700 mb-4">Subprocesos</h2>
-                <div id="subtasks-list" class="space-y-3 mb-6 min-h-[100px]"></div>
-                <button id="show-subtask-form-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition">+ Crear Nuevo Subproceso</button>
+            <div class="bg-white p-6 rounded-xl shadow-lg overflow-hidden">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-2">Subprocesos</h2>
+                <div class="mb-3"><input id="subprocess-search-input" type="text" placeholder="Buscar subproceso..." class="w-full md:w-1/2 border rounded px-3 py-2" /></div>
+                <div id="subtasks-list" class="space-y-3 mb-3 min-h-[100px]"></div>
+                <div id="subprocess-pagination" class="mb-6 flex items-center justify-end"></div>
+                <div class="btn-row justify-end">
+                    <div class="btn-group">
+                        <button id="show-subtask-form-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center">
+                            <i class="fa fa-plus btn-icon mr-2"></i>
+                            <span class="btn-text">Crear Nuevo Subproceso</span>
+                        </button>
+                    </div>
+                </div>
                 <form id="subtask-form" class="mt-6 hidden bg-gray-50 p-4 rounded-lg border"></form>
             </div>
         </div>
@@ -53,9 +123,17 @@
             <h2 class="text-2xl font-bold text-gray-800 mb-4">Gestionar Checklist para "<span id="modal-task-name"></span>"</h2>
             <p class="text-gray-600 mb-6">Selecciona los subprocesos que deben estar disponibles.</p>
             <div id="modal-subtasks-list" class="space-y-3 max-h-80 overflow-y-auto border p-4 rounded-md"></div>
-            <div class="mt-6 flex justify-end gap-4">
-                <button id="modal-cancel-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Cerrar</button>
-                <button id="modal-save-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg">Guardar Cambios</button>
+            <div class="mt-6 btn-row justify-end">
+                <div class="btn-group">
+                    <button id="modal-cancel-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg flex items-center">
+                        <i class="fa fa-times btn-icon mr-2"></i>
+                        <span class="btn-text">Cerrar</span>
+                    </button>
+                    <button id="modal-save-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center">
+                        <i class="fa fa-save btn-icon mr-2"></i>
+                        <span class="btn-text">Guardar Cambios</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -81,18 +159,123 @@
                             <option value="text">Texto</option>
                             <option value="number">Número</option>
                             <option value="boolean">Sí / No</option>
+                            <option value="image">Imagen (cámara/galería)</option>
+                            <option value="video">Video (cámara/galería)</option>
+                            <option value="file">Archivo (documento)</option>
+                            <option value="media">Multimedia (foto o video)</option>
                         </select>
                     </div>
                 </div>
-                <div class="flex items-center mt-4">
+                <div class="flex items-center mt-4 gap-6">
                     <input type="checkbox" id="field-required" class="h-4 w-4 text-cyan-600 border-gray-300 rounded">
                     <label for="field-required" class="ml-2 block text-sm text-gray-900">¿Es un campo obligatorio?</label>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="field-multiple" class="h-4 w-4 text-cyan-600 border-gray-300 rounded">
+                        <label for="field-multiple" class="block text-sm text-gray-900">¿Permitir múltiples?</label>
+                    </div>
                 </div>
-                 <button type="submit" class="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Agregar Campo</button>
+                <div id="field-meta-req" class="flex items-center mt-3 gap-6 hidden">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="field-meta-title-req" class="h-4 w-4 text-cyan-600 border-gray-300 rounded">
+                        <label for="field-meta-title-req" class="block text-sm text-gray-900">Requerir título</label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="field-meta-desc-req" class="h-4 w-4 text-cyan-600 border-gray-300 rounded">
+                        <label for="field-meta-desc-req" class="block text-sm text-gray-900">Requerir descripción</label>
+                    </div>
+                </div>
+                 <button type="submit" class="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center justify-center">
+                    <i class="fa fa-plus btn-icon mr-2"></i>
+                    <span class="btn-text">Agregar Campo</span>
+                 </button>
             </form>
 
-            <div class="mt-6 flex justify-end">
-                <button id="custom-fields-close-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Cerrar</button>
+            <div class="mt-6 btn-row justify-end">
+                <div class="btn-group">
+                    <button id="custom-fields-close-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg flex items-center">
+                        <i class="fa fa-times btn-icon mr-2"></i>
+                        <span class="btn-text">Cerrar</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Ayuda (definición de contenido) -->
+    <div id="help-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Contenido de Ayuda</h2>
+            <p class="text-gray-600 mb-4">Define el contenido de ayuda (texto enriquecido y adjuntos) que verá el técnico.</p>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Título</label>
+                    <input id="help-title" class="mt-1 w-full p-2 border rounded-md bg-gray-50" placeholder="Ej: Cómo realizar el diagnóstico"/>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Contenido</label>
+                    <div class="flex gap-2 mb-2">
+                        <button type="button" id="help-bold" class="px-2 py-1 text-sm border rounded">B</button>
+                        <button type="button" id="help-italic" class="px-2 py-1 text-sm border rounded"><em>I</em></button>
+                        <button type="button" id="help-underline" class="px-2 py-1 text-sm border rounded"><u>U</u></button>
+                        <button type="button" id="help-ul" class="px-2 py-1 text-sm border rounded">• Lista</button>
+                    </div>
+                    <div id="help-editor" class="min-h-[160px] p-3 border rounded-md" contenteditable="true"></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Autor principal</label>
+                        <input id="help-author" class="mt-1 w-full p-2 border rounded-md bg-gray-50" placeholder="Ej: Juan Pérez"/>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Colaboradores (separar por comas)</label>
+                        <input id="help-collab" class="mt-1 w-full p-2 border rounded-md bg-gray-50" placeholder="Ej: Ana, Luis"/>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Adjuntos</label>
+                    <div id="help-dropzone" class="mt-1 border-2 border-dashed border-gray-300 rounded-lg p-4 text-center text-gray-600 cursor-pointer hover:border-cyan-400">
+                        Arrastra y suelta archivos aquí o haz click para seleccionar
+                        <input id="help-attachments-input" type="file" multiple class="hidden" />
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">Puedes reorganizar arrastrando y editar título y descripción de cada archivo.</div>
+                    <div id="help-attachments-list" class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                    <div id="help-attachments-progress" class="text-xs text-gray-500 mt-1"></div>
+                </div>
+            </div>
+            <div class="mt-6 btn-row justify-end">
+                <div class="btn-group">
+                    <button id="help-cancel-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg">Cerrar</button>
+                    <button id="help-save-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg">Guardar</button>
+                    <button id="help-publish-btn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg">Registrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Solicitar Ayuda (help_requests) -->
+    <div id="help-request-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Solicitar ayuda</h2>
+            <p class="text-gray-600 mb-4">Cuéntanos en qué necesitas ayuda. Esta solicitud aparecerá en el Dashboard.</p>
+            <div class="space-y-3">
+                <div class="text-sm text-gray-700">
+                    <div><span class="font-medium">Ámbito:</span> <span id="help-req-scope-label">-</span></div>
+                    <div class="truncate"><span class="font-medium">Proceso/Subproceso:</span> <span id="help-req-item-name">-</span></div>
+                    <div class="truncate hidden" id="help-req-field-row"><span class="font-medium">Campo:</span> <span id="help-req-field-label">-</span></div>
+                </div>
+                <textarea id="help-req-description" rows="4" class="w-full p-3 border rounded-md" placeholder="Describe brevemente el problema o qué tipo de ayuda necesitas..."></textarea>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Adjuntos (imágenes o videos)</label>
+                    <input id="help-req-attachments" type="file" multiple accept="image/*,video/*" class="block w-full text-sm" />
+                    <div id="help-req-attach-list" class="mt-2 text-xs text-gray-600"></div>
+                    <div id="help-req-attach-progress" class="mt-1 text-xs text-gray-500"></div>
+                </div>
+            </div>
+            <div class="mt-6 btn-row justify-end">
+                <div class="btn-group">
+                    <button id="help-req-cancel-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg">Cancelar</button>
+                    <button id="help-req-submit-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg">Enviar solicitud</button>
+                </div>
             </div>
         </div>
     </div>
@@ -100,6 +283,8 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
 
     <script>
         const firebaseConfig = {
@@ -112,15 +297,60 @@
             measurementId: "G-THNZ3J3HZF"
         };
         firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const processesCollection = db.collection('processes');
-        const subprocessesCollection = db.collection('subprocesses');
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+    const processesCollection = db.collection('processes');
+    const subprocessesCollection = db.collection('subprocesses');
+    const activityLogsCollection = db.collection('activity_logs');
+        const sysParamsDoc = db.collection('system_params').doc('global');
+        const helpRequestsCollection = db.collection('help_requests');
     </script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const mainTasksList = document.getElementById('main-tasks-list');
-        const subtasksList = document.getElementById('subtasks-list');
+        // --- Parámetros del sistema ---
+        const sysEffort = document.getElementById('param-weight-effort');
+        const sysDifficulty = document.getElementById('param-weight-difficulty');
+        const sysIntellect = document.getElementById('param-weight-intellect');
+        const sysTimeFactor = document.getElementById('param-time-factor');
+        const sysSaveBtn = document.getElementById('sysparams-save-btn');
+        let systemParamsCache = { weight_effort: 4, weight_difficulty: 4, weight_intellect: 4, time_points_factor: 1 };
+
+        const loadSystemParams = async () => {
+            try{
+                const snap = await sysParamsDoc.get();
+                if (snap.exists) {
+                    systemParamsCache = { ...systemParamsCache, ...snap.data() };
+                }
+            }catch(e){ console.warn('No se pudieron cargar parámetros del sistema', e); }
+            sysEffort.value = systemParamsCache.weight_effort;
+            sysDifficulty.value = systemParamsCache.weight_difficulty;
+            sysIntellect.value = systemParamsCache.weight_intellect;
+            sysTimeFactor.value = systemParamsCache.time_points_factor;
+        };
+        loadSystemParams();
+
+        sysSaveBtn.addEventListener('click', async ()=>{
+            const payload = {
+                weight_effort: parseInt(sysEffort.value)||0,
+                weight_difficulty: parseInt(sysDifficulty.value)||0,
+                weight_intellect: parseInt(sysIntellect.value)||0,
+                time_points_factor: parseFloat(sysTimeFactor.value)||0
+            };
+            try{
+                await sysParamsDoc.set(payload, { merge: true });
+                alert('Parámetros guardados');
+                systemParamsCache = { ...systemParamsCache, ...payload };
+            }catch(err){ console.error('Error guardando parámetros', err); alert('No se pudo guardar'); }
+        });
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const mainTasksList = document.getElementById('main-tasks-list');
+    const subtasksList = document.getElementById('subtasks-list');
+    const processSearchInput = document.getElementById('process-search-input');
+    const subprocessSearchInput = document.getElementById('subprocess-search-input');
+    const PAGE_SIZE = 6;
+    let processPage = 1, subprocessPage = 1;
+    let processSearch = '', subprocessSearch = '';
+    let cacheProcesses = [], cacheSubprocesses = [];
         const showTaskFormBtn = document.getElementById('show-task-form-btn');
         const showSubtaskFormBtn = document.getElementById('show-subtask-form-btn');
         const taskForm = document.getElementById('task-form');
@@ -136,68 +366,277 @@
         const addCustomFieldForm = document.getElementById('add-custom-field-form');
         const customFieldsCloseBtn = document.getElementById('custom-fields-close-btn');
 
+    // Referencias para el Modal de Ayuda (admin)
+    const helpModal = document.getElementById('help-modal');
+    const helpTitleInput = document.getElementById('help-title');
+    const helpEditor = document.getElementById('help-editor');
+    const helpAuthorInput = document.getElementById('help-author');
+    const helpCollabInput = document.getElementById('help-collab');
+    const helpAttachInput = document.getElementById('help-attachments-input');
+    const helpDropzone = document.getElementById('help-dropzone');
+    const helpAttachList = document.getElementById('help-attachments-list');
+    const helpAttachProgress = document.getElementById('help-attachments-progress');
+    const helpCancelBtn = document.getElementById('help-cancel-btn');
+    const helpSaveBtn = document.getElementById('help-save-btn');
+    const helpPublishBtn = document.getElementById('help-publish-btn');
+    const helpBoldBtn = document.getElementById('help-bold');
+    const helpItalicBtn = document.getElementById('help-italic');
+    const helpUnderlineBtn = document.getElementById('help-underline');
+    const helpUlBtn = document.getElementById('help-ul');
+
         let allSubprocesses = [];
         let currentEditingItemId = null;
-        let currentEditingItemType = null;
+    let currentEditingItemType = null;
+    let helpContext = { scope: null, itemId: null, fieldIndex: null, itemType: null };
+
+        // --- Contexto del usuario (para help_requests) ---
+        let currentUserCtx = { uid: null, email: null, employeeId: null, employeeName: null };
+        try {
+            // handshake desde host (esqueleto) si existe
+            window.addEventListener('message', (ev) => {
+                const d = ev?.data || {};
+                if (d && d.type === 'hostAuthReady' && d.payload) {
+                    const p = d.payload;
+                    currentUserCtx.uid = p?.user?.uid || currentUserCtx.uid;
+                    currentUserCtx.email = p?.user?.email || currentUserCtx.email;
+                    currentUserCtx.employeeId = p?.employee?.id || currentUserCtx.employeeId;
+                    currentUserCtx.employeeName = p?.employee?.name || currentUserCtx.employeeName;
+                }
+            });
+        } catch (e) { /* noop */ }
+        // fallback a auth
+        try {
+            firebase.auth().onAuthStateChanged((u) => {
+                if (u) {
+                    currentUserCtx.uid = u.uid;
+                    currentUserCtx.email = u.email || currentUserCtx.email;
+                    if (!currentUserCtx.employeeName) currentUserCtx.employeeName = u.displayName || currentUserCtx.email || 'Usuario';
+                }
+            });
+        } catch (e) { /* noop */ }
+
+        // --- Modal Solicitar Ayuda refs y estado ---
+        const helpReqModal = document.getElementById('help-request-modal');
+        const helpReqScopeLabel = document.getElementById('help-req-scope-label');
+        const helpReqItemName = document.getElementById('help-req-item-name');
+        const helpReqFieldRow = document.getElementById('help-req-field-row');
+        const helpReqFieldLabel = document.getElementById('help-req-field-label');
+        const helpReqDesc = document.getElementById('help-req-description');
+        const helpReqCancelBtn = document.getElementById('help-req-cancel-btn');
+        const helpReqSubmitBtn = document.getElementById('help-req-submit-btn');
+        const helpReqAttachInput = document.getElementById('help-req-attachments');
+        const helpReqAttachList = document.getElementById('help-req-attach-list');
+        const helpReqAttachProgress = document.getElementById('help-req-attach-progress');
+        let helpReqContext = { scope: null, itemId: null, itemName: null, fieldLabel: null };
+
+        const openHelpRequest = (scope, itemId, itemName, fieldLabel = null) => {
+            helpReqContext = { scope, itemId, itemName, fieldLabel };
+            const scopeLabel = scope === 'process' ? 'Proceso' : scope === 'subprocess' ? 'Subproceso' : scope === 'field' ? 'Campo' : scope;
+            helpReqScopeLabel.textContent = scopeLabel;
+            helpReqItemName.textContent = itemName || '-';
+            if (fieldLabel) {
+                helpReqFieldRow.classList.remove('hidden');
+                helpReqFieldLabel.textContent = fieldLabel;
+            } else {
+                helpReqFieldRow.classList.add('hidden');
+                helpReqFieldLabel.textContent = '';
+            }
+            helpReqDesc.value = '';
+            if (helpReqAttachInput) helpReqAttachInput.value = '';
+            if (helpReqAttachList) helpReqAttachList.innerHTML = '';
+            if (helpReqAttachProgress) helpReqAttachProgress.textContent = '';
+            helpReqModal.classList.remove('hidden');
+            helpReqModal.classList.add('flex');
+        };
+
+        if (helpReqAttachInput){
+            helpReqAttachInput.addEventListener('change', ()=>{
+                const files = Array.from(helpReqAttachInput.files||[]);
+                if (!files.length){ helpReqAttachList.innerHTML=''; return; }
+                helpReqAttachList.innerHTML = files.map(f => `• ${f.name} <span class="text-gray-400">(${Math.round((f.size||0)/1024)} KB)</span>`).join('<br/>' );
+            });
+        }
+
+        const uploadHelpReqFiles = async (files) => {
+            const out = [];
+            if (!files || !files.length) return out;
+            for (const f of files){
+                try{
+                    if (helpReqAttachProgress) helpReqAttachProgress.textContent = `Subiendo ${f.name}...`;
+                    const safe = (f.name||'archivo').replace(/[^a-zA-Z0-9-_\.]/g, '_');
+                    const baseId = helpReqContext.itemId || 'general';
+                    const path = `help_requests/${helpReqContext.scope||'general'}/${baseId}/${Date.now()}-${safe}`;
+                    const ref = storage.ref().child(path);
+                    await ref.put(f);
+                    const url = await ref.getDownloadURL();
+                    out.push({ url, name: f.name, contentType: f.type||null, size: f.size||null, addedAtMs: Date.now() });
+                }catch(err){ console.error('Error subiendo adjunto ayuda-request', err); alert('No se pudo subir un adjunto.'); }
+            }
+            if (helpReqAttachProgress) helpReqAttachProgress.textContent = '';
+            return out;
+        };
+
+        const submitHelpRequest = async () => {
+            const desc = (helpReqDesc.value || '').trim();
+            if (!desc) { alert('Por favor, describe brevemente tu solicitud.'); return; }
+            const files = Array.from(helpReqAttachInput?.files||[]);
+            let attachments = [];
+            if (files.length){ attachments = await uploadHelpReqFiles(files); }
+            const payload = {
+                description: desc,
+                scope: helpReqContext.scope,
+                scope_id: helpReqContext.itemId,
+                scope_name: helpReqContext.itemName || null,
+                field_label: helpReqContext.fieldLabel || null,
+                status: 'Solicitado',
+                created_at: firebase.firestore.FieldValue.serverTimestamp(),
+                created_by_uid: currentUserCtx.uid || null,
+                requesting_employee_id: currentUserCtx.employeeId || null,
+                requesting_employee_name: currentUserCtx.employeeName || currentUserCtx.email || 'Usuario',
+                source: 'admin_tasks_panel',
+                attachments
+            };
+            try {
+                await helpRequestsCollection.add(payload);
+                alert('Solicitud enviada.');
+                helpReqModal.classList.add('hidden');
+                helpReqModal.classList.remove('flex');
+            } catch (err) {
+                console.error('Error creando solicitud de ayuda', err);
+                alert('No se pudo enviar la solicitud.');
+            }
+        };
+        if (helpReqCancelBtn) helpReqCancelBtn.addEventListener('click', ()=>{ helpReqModal.classList.add('hidden'); helpReqModal.classList.remove('flex'); });
+        if (helpReqSubmitBtn) helpReqSubmitBtn.addEventListener('click', submitHelpRequest);
 
         const getMeasurementBadge = (type) => {
             const badges = { 'Unitario': 'bg-blue-100 text-blue-800', 'Cantidad': 'bg-green-100 text-green-800', 'Tiempo': 'bg-yellow-100 text-yellow-800' };
             return badges[type] || 'bg-gray-100 text-gray-800';
         };
 
-        const renderProcesses = (processes) => {
+        const renderPagination = (containerId, current, total, count, pageSize) => {
+            const host = document.getElementById(containerId);
+            if (!host) return;
+            if (total <= 1){ host.innerHTML = ''; return; }
+            const btn = (label, page, disabled=false, active=false) => `<button data-page="${page}" class="px-2 py-1 rounded ${active? 'bg-cyan-600 text-white':'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${disabled? 'opacity-50 cursor-not-allowed':''}" ${disabled? 'disabled':''}>${label}</button>`;
+            let html = '<div class="w-full flex items-center justify-between text-sm">'
+                + `<div class="text-gray-500">${Math.min((current-1)*pageSize+1, count)}–${Math.min(current*pageSize, count)} de ${count}</div>`
+                + '<div class="flex items-center gap-1">'
+                + btn('«', 1, current===1) + btn('‹', current-1, current===1);
+            const windowSize=5, start=Math.max(1,current-Math.floor(windowSize/2)), end=Math.min(total,start+windowSize-1);
+            for(let p=start;p<=end;p++) html += btn(p,p,false,p===current);
+            html += btn('›', current+1, current===total) + btn('»', total, current===total) + '</div></div>';
+            host.innerHTML = html;
+            host.querySelectorAll('button[data-page]')?.forEach(b=> b.addEventListener('click', ()=>{
+                const p = parseInt(b.getAttribute('data-page'),10);
+                if (!isNaN(p)){
+                    if (containerId==='process-pagination'){ processPage = p; renderProcesses(); }
+                    else { subprocessPage = p; renderSubprocesses(); }
+                }
+            }));
+        };
+
+        const renderProcesses = () => {
             mainTasksList.innerHTML = '';
-            if (processes.length === 0) {
+            const src = cacheProcesses || [];
+            const filtered = src.filter(p => (p.name||'').toLowerCase().includes(processSearch));
+            if (filtered.length === 0) {
                 mainTasksList.innerHTML = `<p class="text-gray-500 text-center">No hay procesos creados.</p>`;
+                document.getElementById('process-pagination').innerHTML = '';
                 return;
             }
-            processes.sort((a, b) => a.name.localeCompare(b.name)).forEach(proc => {
+            const sorted = filtered.sort((a, b) => (a.name||'').localeCompare(b.name||''));
+            const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+            if (processPage > totalPages) processPage = totalPages;
+            const start = (processPage - 1) * PAGE_SIZE;
+            const pageItems = sorted.slice(start, start + PAGE_SIZE);
+            pageItems.forEach(proc => {
                 const el = document.createElement('div');
-                el.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
+                el.className = 'flex flex-wrap items-start md:items-center justify-between gap-2 bg-gray-50 p-3 rounded-lg border';
                 el.innerHTML = `
-                    <div>
+                    <div class="min-w-0">
                         <p class="font-semibold text-gray-800">${proc.name}</p>
                         <div class="flex items-center gap-2 mt-1 flex-wrap">
                             ${proc.is_composite ? `<span class="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-800">Compuesto</span>` : ''}
                             <span class="text-xs font-medium px-2 py-0.5 rounded ${getMeasurementBadge(proc.measurement_type)}">${proc.measurement_type}</span>
                             ${proc.measurement_type === 'Cantidad' && proc.standard_time_per_unit_seconds > 0 ? `<span class="text-xs font-medium px-2 py-0.5 rounded bg-gray-200 text-gray-800">${proc.standard_time_per_unit_seconds}s/u</span>` : ''}
+                            ${proc.classification ? `<span class="text-xs font-medium px-2 py-0.5 rounded bg-amber-100 text-amber-800">E:${proc.classification.effort||0} D:${proc.classification.difficulty||0} I:${proc.classification.intellect||0}</span>` : ''}
+                            ${proc.avg_time_minutes_auto ? `<span class="text-xs font-medium px-2 py-0.5 rounded bg-cyan-100 text-cyan-800">Avg: ${proc.avg_time_minutes_auto.toFixed(1)}m</span>` : ''}
+                            ${(proc.points_use_manual && proc.base_points_manual) ? `<span class=\"text-xs font-medium px-2 py-0.5 rounded bg-green-100 text-green-800\">Pts: ${proc.base_points_manual}</span>` : (proc.base_points_auto ? `<span class=\"text-xs font-medium px-2 py-0.5 rounded bg-green-100 text-green-800\">Pts: ${proc.base_points_auto}</span>` : '')}
                         </div>
                     </div>
-                    <div class="flex gap-2 flex-shrink-0 flex-wrap">
-                        <button data-id="${proc.id}" data-name="${proc.name}" class="manage-fields-btn text-sm bg-gray-700 hover:bg-gray-800 text-white font-semibold py-1 px-3 rounded-md">Campos</button>
-                        ${proc.is_composite ? `<button data-id="${proc.id}" data-name="${proc.name}" class="manage-checklist-btn text-sm bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-1 px-3 rounded-md">Checklist</button>` : ''}
-                        <button data-id="${proc.id}" class="edit-process-btn text-sm bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md">Editar</button>
-                        <button data-id="${proc.id}" class="delete-process-btn text-sm bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-3 rounded-md">Borrar</button>
+                    <div class="btn-group flex-shrink-0 w-full md:w-auto justify-start md:justify-end mt-2 md:mt-0">
+                        <button data-id="${proc.id}" data-name="${proc.name}" class="manage-fields-btn text-sm bg-gray-700 hover:bg-gray-800 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-database btn-icon mr-2"></i><span class="btn-text">Campos</span>
+                        </button>
+                        <button data-id="${proc.id}" data-name="${proc.name}" class="manage-help-process-btn text-sm bg-teal-600 hover:bg-teal-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-circle-question btn-icon mr-2"></i><span class="btn-text">Ayuda</span>
+                        </button>
+                        <button data-id="${proc.id}" data-name="${proc.name}" class="request-help-process-btn text-sm bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center" title="Solicitar ayuda para este proceso">
+                            <i class="fa fa-handshake-angle btn-icon mr-2"></i><span class="btn-text">Solicitar ayuda</span>
+                        </button>
+                        ${proc.is_composite ? `<button data-id="${proc.id}" data-name="${proc.name}" class="manage-checklist-btn text-sm bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-1.5 px-3 rounded-md flex items-center"><i class=\"fa fa-list-check btn-icon mr-2\"></i><span class=\"btn-text\">Checklist</span></button>` : ''}
+                        <button data-id="${proc.id}" class="recalc-stats-btn text-sm bg-amber-600 hover:bg-amber-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-calculator btn-icon mr-2"></i><span class="btn-text">Recalcular Promedio</span>
+                        </button>
+                        <button data-id="${proc.id}" class="edit-process-btn text-sm bg-gray-600 hover:bg-gray-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-pen btn-icon mr-2"></i><span class="btn-text">Editar</span>
+                        </button>
+                        <button data-id="${proc.id}" class="delete-process-btn text-sm bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-trash btn-icon mr-2"></i><span class="btn-text">Borrar</span>
+                        </button>
                     </div>`;
                 mainTasksList.appendChild(el);
             });
+            renderPagination('process-pagination', processPage, totalPages, sorted.length, PAGE_SIZE);
         };
         
-        const renderSubprocesses = (subprocesses) => {
+        const renderSubprocesses = () => {
             subtasksList.innerHTML = '';
-            allSubprocesses = subprocesses;
-             if (subprocesses.length === 0) {
+            const src = cacheSubprocesses || [];
+            allSubprocesses = src;
+            const filtered = src.filter(s => (s.name||'').toLowerCase().includes(subprocessSearch));
+             if (filtered.length === 0) {
                 subtasksList.innerHTML = `<p class="text-gray-500 text-center">No hay subprocesos creados.</p>`;
+                document.getElementById('subprocess-pagination').innerHTML = '';
                 return;
             }
-            subprocesses.sort((a, b) => a.name.localeCompare(b.name)).forEach(sub => {
+            const sorted = filtered.sort((a, b) => (a.name||'').localeCompare(b.name||''));
+            const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+            if (subprocessPage > totalPages) subprocessPage = totalPages;
+            const start = (subprocessPage - 1) * PAGE_SIZE;
+            const pageItems = sorted.slice(start, start + PAGE_SIZE);
+            pageItems.forEach(sub => {
                 const el = document.createElement('div');
-                el.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
+                el.className = 'flex flex-wrap items-start md:items-center justify-between gap-2 bg-gray-50 p-3 rounded-lg border';
                 el.innerHTML = `
-                     <div>
+                     <div class="min-w-0">
                         <p class="font-semibold text-gray-800">${sub.name}</p>
                         <div class="flex items-center gap-2 mt-1 flex-wrap">
                             <span class="text-xs font-medium px-2 py-0.5 rounded ${getMeasurementBadge(sub.measurement_type)}">${sub.measurement_type}</span>
                             ${sub.measurement_type === 'Cantidad' && sub.standard_time_per_unit_seconds > 0 ? `<span class="text-xs font-medium px-2 py-0.5 rounded bg-gray-200 text-gray-800">${sub.standard_time_per_unit_seconds}s/u</span>` : ''}
                         </div>
                     </div>
-                    <div class="flex gap-2 flex-shrink-0 flex-wrap">
-                        <button data-id="${sub.id}" data-name="${sub.name}" class="manage-fields-btn text-sm bg-gray-700 hover:bg-gray-800 text-white font-semibold py-1 px-3 rounded-md">Campos</button>
-                        <button data-id="${sub.id}" class="edit-subprocess-btn text-sm bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md">Editar</button>
-                        <button data-id="${sub.id}" class="delete-subprocess-btn text-sm bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-3 rounded-md">Borrar</button>
+                    <div class="btn-group flex-shrink-0 w-full md:w-auto justify-start md:justify-end mt-2 md:mt-0">
+                        <button data-id="${sub.id}" data-name="${sub.name}" class="manage-fields-btn text-sm bg-gray-700 hover:bg-gray-800 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-database btn-icon mr-2"></i><span class="btn-text">Campos</span>
+                        </button>
+                        <button data-id="${sub.id}" data-name="${sub.name}" class="manage-help-sub-btn text-sm bg-teal-600 hover:bg-teal-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-circle-question btn-icon mr-2"></i><span class="btn-text">Ayuda</span>
+                        </button>
+                        <button data-id="${sub.id}" data-name="${sub.name}" class="request-help-subprocess-btn text-sm bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center" title="Solicitar ayuda para este subproceso">
+                            <i class="fa fa-handshake-angle btn-icon mr-2"></i><span class="btn-text">Solicitar ayuda</span>
+                        </button>
+                        <button data-id="${sub.id}" class="edit-subprocess-btn text-sm bg-gray-600 hover:bg-gray-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-pen btn-icon mr-2"></i><span class="btn-text">Editar</span>
+                        </button>
+                        <button data-id="${sub.id}" class="delete-subprocess-btn text-sm bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-trash btn-icon mr-2"></i><span class="btn-text">Borrar</span>
+                        </button>
                     </div>`;
                 subtasksList.appendChild(el);
             });
+            renderPagination('subprocess-pagination', subprocessPage, totalPages, sorted.length, PAGE_SIZE);
         };
         
         const renderTaskForm = (process = {}) => {
@@ -222,14 +661,53 @@
                         <label for="task-standard-time" class="block text-sm font-medium text-gray-700">Tiempo Estándar por Unidad (segundos)</label>
                         <input type="number" id="task-standard-time" value="${process.standard_time_per_unit_seconds || 0}" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
                     </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Nivel de esfuerzo (1-5)</label>
+                            <select id="task-effort" class="mt-1 block w-full px-3 py-2 border bg-white border-gray-300 rounded-md">
+                                ${[1,2,3,4,5].map(n=>`<option value="${n}" ${process.classification?.effort===n? 'selected':''}>${n}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Dificultad (1-5)</label>
+                            <select id="task-difficulty" class="mt-1 block w-full px-3 py-2 border bg-white border-gray-300 rounded-md">
+                                ${[1,2,3,4,5].map(n=>`<option value="${n}" ${process.classification?.difficulty===n? 'selected':''}>${n}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Intelectualidad (1-5)</label>
+                            <select id="task-intellect" class="mt-1 block w-full px-3 py-2 border bg-white border-gray-300 rounded-md">
+                                ${[1,2,3,4,5].map(n=>`<option value="${n}" ${process.classification?.intellect===n? 'selected':''}>${n}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Tiempo esperado manual (min)</label>
+                            <input type="number" id="task-expected-min" value="${process.expected_time_minutes_manual || ''}" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Puntos manuales</label>
+                            <input type="number" id="task-points-manual" value="${process.base_points_manual || ''}" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                        </div>
+                        <div class="flex items-end">
+                            <label class="inline-flex items-center gap-2"><input type="checkbox" id="task-use-points-manual" class="h-4 w-4 text-cyan-600 border-gray-300 rounded" ${process.points_use_manual ? 'checked':''}> <span class="text-sm text-gray-900">Usar puntos manuales</span></label>
+                        </div>
+                    </div>
                     <div class="flex items-center">
                         <input type="checkbox" id="task-is-composite" class="h-4 w-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" ${process.is_composite ? 'checked' : ''}>
                         <label for="task-is-composite" class="ml-2 block text-sm text-gray-900">¿Es un proceso compuesto? (Usa checklist)</label>
                     </div>
                 </div>
-                <div class="mt-6 flex gap-3">
-                    <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg">${isEditing ? 'Guardar Cambios' : 'Crear Proceso'}</button>
-                    <button type="button" id="cancel-task-form" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                <div class="mt-6 btn-row justify-end">
+                    <div class="btn-group">
+                        <button type="button" id="cancel-task-form" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg flex items-center">
+                            <i class="fa fa-times btn-icon mr-2"></i><span class="btn-text">Cancelar</span>
+                        </button>
+                        <button type="submit" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center">
+                            <i class="fa fa-save btn-icon mr-2"></i><span class="btn-text">${isEditing ? 'Guardar Cambios' : 'Crear Proceso'}</span>
+                        </button>
+                    </div>
                 </div>
             `;
             taskForm.querySelector('#task-measurement').addEventListener('change', (e) => {
@@ -265,10 +743,49 @@
                         <label for="subtask-standard-time" class="block text-sm font-medium text-gray-700">Tiempo Estándar por Unidad (segundos)</label>
                         <input type="number" id="subtask-standard-time" value="${subprocess.standard_time_per_unit_seconds || 0}" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                     </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Nivel de esfuerzo (1-5)</label>
+                            <select id="subtask-effort" class="mt-1 block w-full px-3 py-2 border bg-white border-gray-300 rounded-md">
+                                ${[1,2,3,4,5].map(n=>`<option value="${n}" ${subprocess.classification?.effort===n? 'selected':''}>${n}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Dificultad (1-5)</label>
+                            <select id="subtask-difficulty" class="mt-1 block w-full px-3 py-2 border bg-white border-gray-300 rounded-md">
+                                ${[1,2,3,4,5].map(n=>`<option value="${n}" ${subprocess.classification?.difficulty===n? 'selected':''}>${n}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Intelectualidad (1-5)</label>
+                            <select id="subtask-intellect" class="mt-1 block w-full px-3 py-2 border bg-white border-gray-300 rounded-md">
+                                ${[1,2,3,4,5].map(n=>`<option value="${n}" ${subprocess.classification?.intellect===n? 'selected':''}>${n}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Tiempo esperado manual (min)</label>
+                            <input type="number" id="subtask-expected-min" value="${subprocess.expected_time_minutes_manual || ''}" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Puntos manuales</label>
+                            <input type="number" id="subtask-points-manual" value="${subprocess.base_points_manual || ''}" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                        </div>
+                        <div class="flex items-end">
+                            <label class="inline-flex items-center gap-2"><input type="checkbox" id="subtask-use-points-manual" class="h-4 w-4 text-blue-600 border-gray-300 rounded" ${subprocess.points_use_manual ? 'checked':''}> <span class="text-sm text-gray-900">Usar puntos manuales</span></label>
+                        </div>
+                    </div>
                 </div>
-                <div class="mt-6 flex gap-3">
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">${isEditing ? 'Guardar Cambios' : 'Crear Subproceso'}</button>
-                    <button type="button" id="cancel-subtask-form" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                <div class="mt-6 btn-row justify-end">
+                    <div class="btn-group">
+                        <button type="button" id="cancel-subtask-form" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg flex items-center">
+                            <i class="fa fa-times btn-icon mr-2"></i><span class="btn-text">Cancelar</span>
+                        </button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center">
+                            <i class="fa fa-save btn-icon mr-2"></i><span class="btn-text">${isEditing ? 'Guardar Cambios' : 'Crear Subproceso'}</span>
+                        </button>
+                    </div>
                 </div>
             `;
             subtaskForm.querySelector('#subtask-measurement').addEventListener('change', (e) => {
@@ -290,10 +807,18 @@
             const measurement_type = isProcess ? formElements['task-measurement'].value : formElements['subtask-measurement'].value;
             const standard_time_per_unit_seconds = measurement_type === 'Cantidad' ? parseInt((isProcess ? formElements['task-standard-time'].value : formElements['subtask-standard-time'].value)) || 0 : 0;
             const is_composite = isProcess ? formElements['task-is-composite'].checked : false;
+            const classification = {
+                effort: parseInt((isProcess ? formElements['task-effort'].value : formElements['subtask-effort'].value)) || 1,
+                difficulty: parseInt((isProcess ? formElements['task-difficulty'].value : formElements['subtask-difficulty'].value)) || 1,
+                intellect: parseInt((isProcess ? formElements['task-intellect'].value : formElements['subtask-intellect'].value)) || 1
+            };
+            const expected_time_minutes_manual = parseFloat((isProcess ? formElements['task-expected-min'].value : formElements['subtask-expected-min'].value)) || null;
+            const base_points_manual = parseFloat((isProcess ? formElements['task-points-manual'].value : formElements['subtask-points-manual'].value)) || null;
+            const points_use_manual = isProcess ? formElements['task-use-points-manual'].checked : formElements['subtask-use-points-manual'].checked;
 
             if (!name) { alert('El nombre es obligatorio.'); return; }
 
-            const data = { name, measurement_type, standard_time_per_unit_seconds };
+            const data = { name, measurement_type, standard_time_per_unit_seconds, classification, expected_time_minutes_manual, base_points_manual, points_use_manual };
             if (isProcess) data.is_composite = is_composite;
             
             try {
@@ -329,7 +854,7 @@
             checklistModal.classList.add('flex');
         };
 
-        const renderCustomFieldsList = (fields = []) => {
+            const renderCustomFieldsList = (fields = []) => {
             customFieldsList.innerHTML = '';
             if (fields.length === 0) {
                 customFieldsList.innerHTML = `<p class="text-gray-500 text-center">No hay campos personalizados.</p>`;
@@ -341,9 +866,19 @@
                 el.innerHTML = `
                     <div>
                         <p class="font-medium text-gray-700">${field.label}</p>
-                        <span class="text-xs text-gray-500">${field.type} ${field.required ? '(Requerido)' : ''}</span>
+                        <span class="text-xs text-gray-500">${field.type}${field.multiple ? ' (múltiple)' : ''} ${field.required ? '(Requerido)' : ''}${field.type==='media' && (field.metaRequiredTitle||field.metaRequiredDescription) ? ` · ${field.metaRequiredTitle?'título req.':''} ${field.metaRequiredDescription?'descripción req.':''}` : ''}</span>
                     </div>
-                    <button data-index="${index}" class="delete-field-btn text-red-500 hover:text-red-700 font-bold p-1">X</button>
+                    <div class="flex gap-2">
+                        <button data-index="${index}" class="help-field-btn bg-teal-600 hover:bg-teal-700 text-white font-semibold py-1 px-3 rounded-md flex items-center" title="Ayuda de este campo">
+                            <i class="fa fa-circle-question btn-icon"></i>
+                        </button>
+                        <button data-index="${index}" class="request-help-field-btn bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-1 px-3 rounded-md flex items-center" title="Solicitar ayuda para este campo">
+                            <i class="fa fa-handshake-angle btn-icon"></i>
+                        </button>
+                        <button data-index="${index}" class="delete-field-btn bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-3 rounded-md flex items-center">
+                            <i class="fa fa-trash btn-icon"></i>
+                        </button>
+                    </div>
                 `;
                 customFieldsList.appendChild(el);
             });
@@ -365,8 +900,9 @@
 
         // --- LISTENERS ---
         processesCollection.onSnapshot(snapshot => {
-            const processes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            renderProcesses(processes);
+            cacheProcesses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderProcesses();
+            renderHelpPending(cacheProcesses, cacheSubprocesses);
             loadingOverlay.style.display = 'none';
         }, err => {
             console.error("Error fetching processes: ", err);
@@ -375,15 +911,25 @@
         });
 
         subprocessesCollection.onSnapshot(snapshot => {
-            const subprocesses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            renderSubprocesses(subprocesses);
+            cacheSubprocesses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderSubprocesses();
+            renderHelpPending(cacheProcesses, cacheSubprocesses);
+            // re-evaluar ayudas pendientes si ya hay procesos cargados
+            const existingProcesses = Array.from(document.querySelectorAll('#main-tasks-list > div')).length; // indicador rápido
+            if (existingProcesses >= 0) {
+                // Intento: leer última data de procesos desde la UI no es fiable; mejor mantener un cache simple.
+            }
         }, err => console.error("Error fetching subprocesses: ", err));
+
+        // Cache simple para recomputar pendientes cuando cambien snapshots (mantenido por los listeners anteriores)
 
         taskForm.addEventListener('submit', (e) => handleFormSubmit(e, processesCollection, true));
         subtaskForm.addEventListener('submit', (e) => handleFormSubmit(e, subprocessesCollection, false));
 
-        showTaskFormBtn.addEventListener('click', () => renderTaskForm());
-        showSubtaskFormBtn.addEventListener('click', () => renderSubtaskForm());
+    showTaskFormBtn.addEventListener('click', () => renderTaskForm());
+    showSubtaskFormBtn.addEventListener('click', () => renderSubtaskForm());
+    processSearchInput.addEventListener('input', (e)=>{ processSearch = (e.target.value||'').toLowerCase(); processPage = 1; renderProcesses(); });
+    subprocessSearchInput.addEventListener('input', (e)=>{ subprocessSearch = (e.target.value||'').toLowerCase(); subprocessPage = 1; renderSubprocesses(); });
         
         mainTasksList.addEventListener('click', async (e) => {
             const target = e.target.closest('button');
@@ -403,6 +949,11 @@
                 openChecklistModal(id, name, doc.data().checklist || []);
             } else if (target.classList.contains('manage-fields-btn')) {
                 openCustomFieldsModal(id, target.dataset.name, 'process');
+            } else if (target.classList.contains('manage-help-process-btn')) {
+                const doc = await processesCollection.doc(id).get();
+                openHelpModal('process', id, doc.data().help || null);
+            } else if (target.classList.contains('recalc-stats-btn')) {
+                await recomputeAutoStatsForProcess(id);
             }
         });
         
@@ -419,6 +970,9 @@
                 renderSubtaskForm({ id: doc.id, ...doc.data() });
             } else if (target.classList.contains('manage-fields-btn')) {
                 openCustomFieldsModal(id, target.dataset.name, 'subprocess');
+            } else if (target.classList.contains('manage-help-sub-btn')) {
+                const doc = await subprocessesCollection.doc(id).get();
+                openHelpModal('subprocess', id, doc.data().help || null);
             }
         });
 
@@ -439,15 +993,37 @@
             }
         });
 
+        // Toggle de opciones según tipo de campo
+        const fieldTypeSelect = document.getElementById('field-type');
+        const fieldMultiple = document.getElementById('field-multiple');
+        const fieldMetaReq = document.getElementById('field-meta-req');
+        fieldTypeSelect.addEventListener('change', () => {
+            const t = fieldTypeSelect.value;
+            // múltiples solo relevante para imagen/video/file/media
+            const multiRelevant = ['image','video','file','media'].includes(t);
+            fieldMultiple.closest('div').classList.toggle('opacity-50', !multiRelevant);
+            fieldMultiple.closest('div').classList.toggle('pointer-events-none', !multiRelevant);
+            // metadatos solo para media
+            fieldMetaReq.classList.toggle('hidden', t !== 'media');
+        });
+
         addCustomFieldForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const label = e.target.elements['field-label'].value.trim();
             const type = e.target.elements['field-type'].value;
             const required = e.target.elements['field-required'].checked;
+            const multiple = e.target.elements['field-multiple'].checked;
+            const metaTitleReq = document.getElementById('field-meta-title-req').checked;
+            const metaDescReq = document.getElementById('field-meta-desc-req').checked;
 
             if (!label) { alert('El nombre del campo es obligatorio.'); return; }
             
             const newField = { label, type, required };
+            if (['image','video','file','media'].includes(type)) newField.multiple = !!multiple;
+            if (type === 'media'){
+                if (metaTitleReq) newField.metaRequiredTitle = true;
+                if (metaDescReq) newField.metaRequiredDescription = true;
+            }
             const collection = currentEditingItemType === 'process' ? processesCollection : subprocessesCollection;
             
             try {
@@ -455,8 +1031,10 @@
                     custom_fields: firebase.firestore.FieldValue.arrayUnion(newField)
                 });
                 addCustomFieldForm.reset();
-                const doc = await collection.doc(currentEditingItemId).get();
-                renderCustomFieldsList(doc.data().custom_fields || []);
+        const doc = await collection.doc(currentEditingItemId).get();
+        renderCustomFieldsList(doc.data().custom_fields || []);
+        // reset toggles UI
+        fieldMetaReq.classList.add('hidden');
             } catch (err) {
                 console.error("Error adding custom field:", err);
                 alert("No se pudo agregar el campo.");
@@ -464,8 +1042,11 @@
         });
 
         customFieldsList.addEventListener('click', async (e) => {
-            if (e.target.classList.contains('delete-field-btn')) {
-                const index = parseInt(e.target.dataset.index);
+            const delBtn = e.target.closest('.delete-field-btn');
+            const helpBtn = e.target.closest('.help-field-btn');
+            const reqBtn = e.target.closest('.request-help-field-btn');
+            if (delBtn) {
+                const index = parseInt(delBtn.dataset.index);
                 const collection = currentEditingItemType === 'process' ? processesCollection : subprocessesCollection;
                 
                 const doc = await collection.doc(currentEditingItemId).get();
@@ -479,6 +1060,22 @@
                     console.error("Error deleting custom field:", err);
                     alert("No se pudo eliminar el campo.");
                 }
+            } else if (helpBtn) {
+                const index = parseInt(helpBtn.dataset.index);
+                const collection = currentEditingItemType === 'process' ? processesCollection : subprocessesCollection;
+                const doc = await collection.doc(currentEditingItemId).get();
+                const fields = doc.data().custom_fields || [];
+                const field = fields[index] || {};
+                openHelpModal('field', currentEditingItemId, field.help || null, { fieldIndex: index, itemType: currentEditingItemType });
+            } else if (reqBtn) {
+                const index = parseInt(reqBtn.dataset.index);
+                const collection = currentEditingItemType === 'process' ? processesCollection : subprocessesCollection;
+                const doc = await collection.doc(currentEditingItemId).get();
+                const data = doc.data() || {};
+                const fields = data.custom_fields || [];
+                const field = fields[index] || {};
+                const itemName = currentEditingItemType === 'process' ? (data.name || 'Proceso') : (data.name || 'Subproceso');
+                openHelpRequest('field', currentEditingItemId, itemName, field.label || '');
             }
         });
 
@@ -486,7 +1083,394 @@
             customFieldsModal.classList.add('hidden');
             customFieldsModal.classList.remove('flex');
         });
+
+        // Render de ayudas pendientes
+        const helpPendingCount = document.getElementById('help-pending-count');
+        const helpPendingList = document.getElementById('help-pending-list');
+        const helpPendingSearchInput = document.getElementById('help-pending-search');
+        let helpPendingSearch = '';
+        let helpPendingPage = 1;
+        const renderHelpPending = (processes = [], subprocesses = []) => {
+            const items = [];
+            // Procesos
+            (processes||[]).forEach(p => {
+                const help = p.help || null;
+                const missing = !help || !help.title;
+                const draft = !!help && help.published !== true;
+                if (missing || draft) {
+                    items.push({ scope: 'process', id: p.id, name: p.name, status: missing ? 'faltante' : 'borrador' });
+                }
+                // Campos del proceso
+                (p.custom_fields||[]).forEach((f, idx) => {
+                    const fh = f.help || null;
+                    const fMissing = !fh || !fh.title;
+                    const fDraft = !!fh && fh.published !== true;
+                    if (fMissing || fDraft) {
+                        items.push({ scope: 'field', id: p.id, name: `${p.name} · Campo: ${f.label}`, status: fMissing ? 'faltante' : 'borrador', fieldIndex: idx, itemType: 'process' });
+                    }
+                });
+            });
+            // Subprocesos
+            (subprocesses||[]).forEach(s => {
+                const help = s.help || null;
+                const missing = !help || !help.title;
+                const draft = !!help && help.published !== true;
+                if (missing || draft) {
+                    items.push({ scope: 'subprocess', id: s.id, name: s.name, status: missing ? 'faltante' : 'borrador' });
+                }
+                (s.custom_fields||[]).forEach((f, idx) => {
+                    const fh = f.help || null;
+                    const fMissing = !fh || !fh.title;
+                    const fDraft = !!fh && fh.published !== true;
+                    if (fMissing || fDraft) {
+                        items.push({ scope: 'field', id: s.id, name: `${s.name} · Campo: ${f.label}`, status: fMissing ? 'faltante' : 'borrador', fieldIndex: idx, itemType: 'subprocess' });
+                    }
+                });
+            });
+            const filtered = items.filter(it => {
+                if (!helpPendingSearch) return true;
+                const s = helpPendingSearch;
+                return (it.name||'').toLowerCase().includes(s) || (it.scope||'').toLowerCase().includes(s) || (it.status||'').toLowerCase().includes(s);
+            });
+            helpPendingCount.textContent = filtered.length ? `${filtered.length} pendientes` : 'Sin pendientes';
+            if (!filtered.length) { helpPendingList.innerHTML = `<div class="text-sm text-green-700">Todo listo. No hay ayudas faltantes.</div>`; document.getElementById('help-pending-pagination').innerHTML=''; return; }
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            if (helpPendingPage > totalPages) helpPendingPage = totalPages;
+            const start = (helpPendingPage - 1) * PAGE_SIZE;
+            const pageItems = filtered.slice(start, start + PAGE_SIZE);
+            helpPendingList.innerHTML = pageItems.map(it => {
+                const badge = it.scope === 'process' ? 'bg-blue-100 text-blue-800' : it.scope === 'subprocess' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                const status = it.status === 'faltante' ? '<span class="text-red-600 font-medium">FALTA</span>' : '<span class="text-yellow-700 font-medium">BORRADOR</span>';
+                const btnText = it.status === 'faltante' ? 'Crear' : 'Completar';
+                const requestBtn = `<button class="help-pending-request bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold px-3 py-1.5 rounded" data-scope="${it.scope}" data-id="${it.id}" data-name="${(it.name||'').replace(/"/g,'&quot;')}" data-field-label="${(it.scope==='field' ? (it.name.split('· Campo: ')[1]||'') : '').replace(/"/g,'&quot;')}">Solicitar</button>`;
+                return `<div class="flex items-center justify-between bg-gray-50 border rounded-lg p-2">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 text-sm"><span class="px-2 py-0.5 rounded ${badge}">${it.scope}</span>${status}</div>
+                        <p class="font-medium text-gray-800 truncate">${it.name}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="help-pending-open bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-3 py-1.5 rounded" data-scope="${it.scope}" data-id="${it.id}" data-field-index="${it.fieldIndex ?? ''}" data-item-type="${it.itemType ?? ''}">${btnText}</button>
+                        ${requestBtn}
+                    </div>
+                </div>`;
+            }).join('');
+            renderPagination('help-pending-pagination', helpPendingPage, totalPages, filtered.length, PAGE_SIZE);
+        };
+        helpPendingSearchInput?.addEventListener('input', (e)=>{ helpPendingSearch = (e.target.value||'').toLowerCase(); helpPendingPage = 1; renderHelpPending(cacheProcesses, cacheSubprocesses); });
+
+        // Click en pendientes para abrir modal de ayuda
+        document.getElementById('help-pending-list').addEventListener('click', async (e) => {
+            const btn = e.target.closest('.help-pending-open');
+            if (!btn) return;
+            const scope = btn.dataset.scope;
+            const id = btn.dataset.id;
+            const fieldIndex = btn.dataset.fieldIndex ? parseInt(btn.dataset.fieldIndex) : null;
+            const itemType = btn.dataset.itemType || null;
+            try{
+                if (scope === 'process'){
+                    const doc = await processesCollection.doc(id).get();
+                    openHelpModal('process', id, (doc.data()||{}).help || null);
+                } else if (scope === 'subprocess'){
+                    const doc = await subprocessesCollection.doc(id).get();
+                    openHelpModal('subprocess', id, (doc.data()||{}).help || null);
+                } else if (scope === 'field' && fieldIndex !== null){
+                    const collection = itemType === 'process' ? processesCollection : subprocessesCollection;
+                    const doc = await collection.doc(id).get();
+                    const data = doc.data()||{};
+                    const fields = data.custom_fields || [];
+                    const field = fields[fieldIndex] || {};
+                    openHelpModal('field', id, field.help || null, { fieldIndex, itemType });
+                }
+            }catch(err){ console.error('Error abriendo ayuda pendiente', err); }
+        });
+
+        // Botón de solicitar ayuda desde pendientes (añadimos un delegado adicional)
+        document.getElementById('help-pending-list').addEventListener('click', async (e) => {
+            const btn = e.target.closest('.help-pending-request');
+            if (!btn) return;
+            const scope = btn.dataset.scope;
+            const id = btn.dataset.id;
+            const name = btn.dataset.name || '';
+            const fieldLabel = btn.dataset.fieldLabel || null;
+            openHelpRequest(scope, id, name, fieldLabel);
+        });
+
+        // ---- AYUDA: funciones y eventos ----
+        const openHelpModal = (scope, itemId, existingHelp, extra = {}) => {
+            helpContext = { scope, itemId, fieldIndex: extra.fieldIndex ?? null, itemType: extra.itemType ?? null };
+            helpTitleInput.value = (existingHelp && existingHelp.title) ? existingHelp.title : '';
+            helpEditor.innerHTML = (existingHelp && existingHelp.html) ? existingHelp.html : '';
+            helpAuthorInput.value = (existingHelp && existingHelp.createdByName) ? existingHelp.createdByName : '';
+            helpCollabInput.value = (existingHelp && existingHelp.authors && existingHelp.authors.length) ? existingHelp.authors.join(', ') : '';
+            renderHelpAttachments((existingHelp && existingHelp.attachments) ? existingHelp.attachments : []);
+            helpModal.classList.remove('hidden');
+            helpModal.classList.add('flex');
+        };
+
+        const renderHelpAttachments = (arr) => {
+            const safe = (arr||[]).map(a => ({ title: a.title || '', description: a.description || '', ...a }));
+            helpAttachList.innerHTML = safe.map((a, idx) => {
+                const ct = (a.contentType||'');
+                const preview = ct.startsWith('image/') ? `<div class=\"w-full h-40 rounded overflow-hidden border bg-gray-50\"><img src=\"${a.url}\" class=\"w-full h-full object-cover\"/></div>`
+                              : ct.startsWith('video/') ? `<video src=\"${a.url}\" class=\"w-full h-40 rounded border bg-black object-contain\" controls></video>`
+                              : `<div class=\"p-3 border rounded bg-gray-50\"><a href=\"${a.url}\" target=\"_blank\" class=\"text-cyan-700 underline\">${a.name||'archivo'}</a></div>`;
+                return `<div class=\"border rounded-lg p-3 bg-white flex flex-col gap-2 draggable-item\" draggable=\"true\" data-index=\"${idx}\">
+                    <div class=\"flex items-center justify-between\">
+                        <div class=\"text-gray-400 cursor-move\"><i class=\"fa fa-grip-vertical\"></i></div>
+                        <button class=\"help-del-btn text-red-600 hover:text-red-700 text-sm\" data-index=\"${idx}\"><i class=\"fa fa-trash\"></i> Eliminar</button>
+                    </div>
+                    ${preview}
+                    <div>
+                        <label class=\"block text-xs font-medium text-gray-600\">Título</label>
+                        <input class=\"help-title-input mt-1 w-full p-2 border rounded\" data-index=\"${idx}\" value=\"${(a.title||'').replace(/\\/g,'\\\\').replace(/\"/g,'\\\"')}\" />
+                    </div>
+                    <div>
+                        <label class=\"block text-xs font-medium text-gray-600\">Descripción</label>
+                        <textarea class=\"help-desc-input mt-1 w-full p-2 border rounded\" rows=\"2\" data-index=\"${idx}\">${(a.description||'').replace(/</g,'&lt;')}</textarea>
+                    </div>
+                </div>`;
+            }).join('');
+            helpAttachList.dataset.current = encodeURIComponent(JSON.stringify(safe));
+            let dragIndex = null;
+            helpAttachList.querySelectorAll('.draggable-item').forEach(card => {
+                card.addEventListener('dragstart', (ev) => { dragIndex = parseInt(card.dataset.index); ev.dataTransfer.effectAllowed = 'move'; });
+                card.addEventListener('dragover', (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; });
+                card.addEventListener('drop', (ev) => {
+                    ev.preventDefault();
+                    const toIndex = parseInt(card.dataset.index);
+                    if (dragIndex === null || dragIndex === toIndex) return;
+                    const current = JSON.parse(decodeURIComponent(helpAttachList.dataset.current));
+                    const [moved] = current.splice(dragIndex, 1);
+                    current.splice(toIndex, 0, moved);
+                    renderHelpAttachments(current);
+                });
+            });
+        };
+
+        const uploadHelpAttachments = async (files) => {
+            const uploaded = [];
+            for (const f of files){
+                try{
+                    helpAttachProgress.textContent = `Subiendo ${f.name}...`;
+                    const safeName = (f.name||'archivo').replace(/[^a-zA-Z0-9-_\.]/g,'_');
+                    const path = `help/${helpContext.scope}/${helpContext.itemId}/${Date.now()}-${safeName}`;
+                    const ref = storage.ref().child(path);
+                    await ref.put(f);
+                    const url = await ref.getDownloadURL();
+                    uploaded.push({ url, name: f.name, contentType: f.type || null, size: f.size || null, title: '', description: '', addedAtMs: Date.now() });
+                }catch(err){ console.error('Error subiendo adjunto de ayuda', err); alert('No se pudo subir un adjunto.'); }
+            }
+            helpAttachProgress.textContent = '';
+            return uploaded;
+        };
+
+        if (helpAttachInput) helpAttachInput.addEventListener('change', async (e)=>{
+            const files = Array.from(e.target.files||[]);
+            if (!files.length) return;
+            const current = helpAttachList.dataset.current ? JSON.parse(decodeURIComponent(helpAttachList.dataset.current)) : [];
+            const uploaded = await uploadHelpAttachments(files);
+            const merged = current.concat(uploaded);
+            renderHelpAttachments(merged);
+            helpAttachInput.value = '';
+        });
+        if (helpDropzone){
+            helpDropzone.addEventListener('click', ()=> helpAttachInput && helpAttachInput.click());
+            helpDropzone.addEventListener('dragover', (e)=> { e.preventDefault(); helpDropzone.classList.add('border-cyan-400'); });
+            helpDropzone.addEventListener('dragleave', ()=> helpDropzone.classList.remove('border-cyan-400'));
+            helpDropzone.addEventListener('drop', async (e)=>{
+                e.preventDefault(); helpDropzone.classList.remove('border-cyan-400');
+                const files = Array.from(e.dataTransfer.files||[]);
+                if (!files.length) return;
+                const current = helpAttachList.dataset.current ? JSON.parse(decodeURIComponent(helpAttachList.dataset.current)) : [];
+                const uploaded = await uploadHelpAttachments(files);
+                renderHelpAttachments(current.concat(uploaded));
+            });
+        }
+        helpAttachList.addEventListener('input', (e)=>{
+            const isTitle = e.target.classList.contains('help-title-input');
+            const isDesc = e.target.classList.contains('help-desc-input');
+            if (!isTitle && !isDesc) return;
+            const idx = parseInt(e.target.dataset.index);
+            const arr = helpAttachList.dataset.current ? JSON.parse(decodeURIComponent(helpAttachList.dataset.current)) : [];
+            if (!arr[idx]) return;
+            if (isTitle) arr[idx].title = e.target.value;
+            if (isDesc) arr[idx].description = e.target.value;
+            helpAttachList.dataset.current = encodeURIComponent(JSON.stringify(arr));
+        });
+        helpAttachList.addEventListener('click', (e)=>{
+            const delBtn = e.target.closest('.help-del-btn');
+            if (!delBtn) return;
+            const idx = parseInt(delBtn.dataset.index);
+            const arr = helpAttachList.dataset.current ? JSON.parse(decodeURIComponent(helpAttachList.dataset.current)) : [];
+            arr.splice(idx, 1);
+            renderHelpAttachments(arr);
+        });
+        if (helpBoldBtn) helpBoldBtn.onclick = ()=> document.execCommand('bold');
+        if (helpItalicBtn) helpItalicBtn.onclick = ()=> document.execCommand('italic');
+        if (helpUnderlineBtn) helpUnderlineBtn.onclick = ()=> document.execCommand('underline');
+        if (helpUlBtn) helpUlBtn.onclick = ()=> document.execCommand('insertUnorderedList');
+        if (helpCancelBtn) helpCancelBtn.onclick = ()=> { helpModal.classList.add('hidden'); helpModal.classList.remove('flex'); };
+        if (helpSaveBtn) helpSaveBtn.onclick = async ()=>{
+            const title = helpTitleInput.value.trim();
+            const html = helpEditor.innerHTML;
+            const attachments = helpAttachList.dataset.current ? JSON.parse(decodeURIComponent(helpAttachList.dataset.current)) : [];
+            const authorName = helpAuthorInput.value.trim();
+            const collaborators = helpCollabInput.value.trim() ? helpCollabInput.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+            let help = { title, html, attachments };
+            try{
+                if (helpContext.scope === 'process'){
+                    const docRef = processesCollection.doc(helpContext.itemId);
+                    const doc = await docRef.get();
+                    const prev = (doc.exists && doc.data().help) ? doc.data().help : {};
+                    help.createdAt = prev.createdAt || firebase.firestore.FieldValue.serverTimestamp();
+                    help.createdByName = prev.createdByName || (authorName || null);
+                    help.authors = Array.from(new Set([...(prev.authors||[]), ...collaborators]));
+                    help.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                    help.updatedByName = authorName || prev.updatedByName || null;
+                    await docRef.set({ help }, { merge: true });
+                } else if (helpContext.scope === 'subprocess'){
+                    const docRef = subprocessesCollection.doc(helpContext.itemId);
+                    const doc = await docRef.get();
+                    const prev = (doc.exists && doc.data().help) ? doc.data().help : {};
+                    help.createdAt = prev.createdAt || firebase.firestore.FieldValue.serverTimestamp();
+                    help.createdByName = prev.createdByName || (authorName || null);
+                    help.authors = Array.from(new Set([...(prev.authors||[]), ...collaborators]));
+                    help.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                    help.updatedByName = authorName || prev.updatedByName || null;
+                    await docRef.set({ help }, { merge: true });
+                } else if (helpContext.scope === 'field'){
+                    const collection = helpContext.itemType === 'process' ? processesCollection : subprocessesCollection;
+                    const doc = await collection.doc(helpContext.itemId).get();
+                    const data = doc.data();
+                    const fields = data.custom_fields || [];
+                    if (fields[helpContext.fieldIndex]){
+                        const prev = fields[helpContext.fieldIndex].help || {};
+                        help.createdAt = prev.createdAt || firebase.firestore.FieldValue.serverTimestamp();
+                        help.createdByName = prev.createdByName || (authorName || null);
+                        help.authors = Array.from(new Set([...(prev.authors||[]), ...collaborators]));
+                        help.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                        help.updatedByName = authorName || prev.updatedByName || null;
+                        fields[helpContext.fieldIndex].help = help;
+                        await collection.doc(helpContext.itemId).update({ custom_fields: fields });
+                    }
+                }
+                alert('Ayuda guardada.');
+                helpModal.classList.add('hidden'); helpModal.classList.remove('flex');
+            }catch(err){ console.error('Error guardando ayuda', err); alert('No se pudo guardar la ayuda.'); }
+        };
+        if (helpPublishBtn) helpPublishBtn.onclick = async ()=>{
+            const title = helpTitleInput.value.trim();
+            const html = helpEditor.innerHTML;
+            const attachments = helpAttachList.dataset.current ? JSON.parse(decodeURIComponent(helpAttachList.dataset.current)) : [];
+            const authorName = helpAuthorInput.value.trim();
+            const collaborators = helpCollabInput.value.trim() ? helpCollabInput.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+            let help = { title, html, attachments, published: true, publishedAt: firebase.firestore.FieldValue.serverTimestamp(), publishedByName: authorName || null };
+            try{
+                if (helpContext.scope === 'process'){
+                    const docRef = processesCollection.doc(helpContext.itemId);
+                    const doc = await docRef.get();
+                    const prev = (doc.exists && doc.data().help) ? doc.data().help : {};
+                    help.createdAt = prev.createdAt || firebase.firestore.FieldValue.serverTimestamp();
+                    help.createdByName = prev.createdByName || (authorName || null);
+                    help.authors = Array.from(new Set([...(prev.authors||[]), ...collaborators]));
+                    help.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                    help.updatedByName = authorName || prev.updatedByName || null;
+                    await docRef.set({ help }, { merge: true });
+                } else if (helpContext.scope === 'subprocess'){
+                    const docRef = subprocessesCollection.doc(helpContext.itemId);
+                    const doc = await docRef.get();
+                    const prev = (doc.exists && doc.data().help) ? doc.data().help : {};
+                    help.createdAt = prev.createdAt || firebase.firestore.FieldValue.serverTimestamp();
+                    help.createdByName = prev.createdByName || (authorName || null);
+                    help.authors = Array.from(new Set([...(prev.authors||[]), ...collaborators]));
+                    help.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                    help.updatedByName = authorName || prev.updatedByName || null;
+                    await docRef.set({ help }, { merge: true });
+                } else if (helpContext.scope === 'field'){
+                    const collection = helpContext.itemType === 'process' ? processesCollection : subprocessesCollection;
+                    const doc = await collection.doc(helpContext.itemId).get();
+                    const data = doc.data();
+                    const fields = data.custom_fields || [];
+                    if (fields[helpContext.fieldIndex]){
+                        const prev = fields[helpContext.fieldIndex].help || {};
+                        help.createdAt = prev.createdAt || firebase.firestore.FieldValue.serverTimestamp();
+                        help.createdByName = prev.createdByName || (authorName || null);
+                        help.authors = Array.from(new Set([...(prev.authors||[]), ...collaborators]));
+                        help.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                        help.updatedByName = authorName || prev.updatedByName || null;
+                        fields[helpContext.fieldIndex].help = help;
+                        await collection.doc(helpContext.itemId).update({ custom_fields: fields });
+                    }
+                }
+                alert('Documento de ayuda registrado.');
+                helpModal.classList.add('hidden'); helpModal.classList.remove('flex');
+            }catch(err){ console.error('Error registrando ayuda', err); alert('No se pudo registrar la ayuda.'); }
+        };
+
+        // Delegados: clicks para Solicitar Ayuda (procesos y subprocesos)
+        mainTasksList.addEventListener('click', (e)=>{
+            const btn = e.target.closest('.request-help-process-btn');
+            if (!btn) return;
+            openHelpRequest('process', btn.dataset.id, btn.dataset.name);
+        });
+        subtasksList.addEventListener('click', (e)=>{
+            const btn = e.target.closest('.request-help-subprocess-btn');
+            if (!btn) return;
+            openHelpRequest('subprocess', btn.dataset.id, btn.dataset.name);
+        });
     });
+
+    // --- Cálculo automático de promedios y puntos ---
+    let POINT_WEIGHT_EFFORT = 4; // puntos por nivel
+    let POINT_WEIGHT_DIFFICULTY = 4;
+    let POINT_WEIGHT_INTELLECT = 4;
+    let TIME_POINTS_FACTOR = 1; // puntos por minuto promedio
+    // Sincronizar con parámetros del sistema
+    (async ()=>{
+        try{
+            const snap = await sysParamsDoc.get();
+            if (snap.exists){
+                const d = snap.data();
+                POINT_WEIGHT_EFFORT = d.weight_effort ?? POINT_WEIGHT_EFFORT;
+                POINT_WEIGHT_DIFFICULTY = d.weight_difficulty ?? POINT_WEIGHT_DIFFICULTY;
+                POINT_WEIGHT_INTELLECT = d.weight_intellect ?? POINT_WEIGHT_INTELLECT;
+                TIME_POINTS_FACTOR = d.time_points_factor ?? TIME_POINTS_FACTOR;
+            }
+        }catch(e){ console.warn('Parámetros sistema no disponibles, usando defaults'); }
+    })();
+
+    async function recomputeAutoStatsForProcess(processId){
+        try{
+            const since = new Date(); since.setDate(since.getDate()-90);
+            const snap = await activityLogsCollection
+                .where('status','==','completed')
+                .where('process_id','==', processId)
+                .where('end_time','>=', since)
+                .get();
+            const durationsMin = snap.docs.map(d => (d.data().total_duration_seconds||0)/60).filter(n => n>0).sort((a,b)=>a-b);
+            if (!durationsMin.length){ alert('No hay datos suficientes para este proceso.'); return; }
+            let avg;
+            if (durationsMin.length < 5){
+                // mediana
+                const mid = Math.floor(durationsMin.length/2);
+                avg = durationsMin.length%2 ? durationsMin[mid] : (durationsMin[mid-1]+durationsMin[mid])/2;
+            } else {
+                // recorta el 10% más lento
+                const cut = Math.max(1, Math.floor(durationsMin.length*0.1));
+                const trimmed = durationsMin.slice(0, durationsMin.length - cut);
+                avg = trimmed.reduce((a,b)=>a+b,0)/trimmed.length;
+            }
+            avg = Math.round(avg*10)/10; // 1 decimal
+            const procDoc = await processesCollection.doc(processId).get();
+            const proc = procDoc.data()||{};
+            const cl = proc.classification || { effort:1, difficulty:1, intellect:1 };
+            const pointsFromTime = Math.round(avg * TIME_POINTS_FACTOR);
+            const pointsFromClass = (cl.effort||1)*POINT_WEIGHT_EFFORT + (cl.difficulty||1)*POINT_WEIGHT_DIFFICULTY + (cl.intellect||1)*POINT_WEIGHT_INTELLECT;
+            const base_points_auto = pointsFromTime + pointsFromClass;
+            await processesCollection.doc(processId).update({ avg_time_minutes_auto: avg, base_points_auto, avg_time_lastComputedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            alert('Promedio y puntos automáticos actualizados.');
+        }catch(err){ console.error('Error recomputando promedio', err); alert('No se pudo recomputar el promedio.'); }
+    }
     </script>
 </body>
 </html>

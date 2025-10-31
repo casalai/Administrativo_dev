@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador de Items</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome (para iconos) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Firebase v8 -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+    
+    <style>
+        /* Estilo para que la lista y el detalle tengan scroll independiente */
+        .main-container {
+            /* 100vh - altura del header/padding */
+            height: calc(100vh - 100px); 
+        }
+        .scrollable {
+            overflow-y: auto;
+        }
+        
+        /* Estilo para el item de lista seleccionado */
+        .list-item.selected {
+            background-color: #eff6ff; /* bg-blue-50 */
+            border-right: 4px solid #3b82f6; /* border-blue-600 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased">
+
+    <div class="container mx-auto max-w-7xl p-4 md:p-8">
+        <header class="mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Buscador de Inventario</h1>
+            <p class="text-gray-600">Filtra y visualiza los items creados.</p>
+        </header>
+        
+        <!-- Controles de Búsqueda y Filtro -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="relative md:col-span-2">
+                <input type="text" id="searchInput" class="w-full p-3 pl-10 border border-gray-300 rounded-lg shadow-sm" placeholder="Buscar por SKU, Descripción, Marca...">
+                <i class="fas fa-search absolute left-3 top-3.5 text-gray-400"></i>
+            </div>
+            <div>
+                <select id="filterTipo" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm bg-white">
+                    <option value="todos">Todos los Tipos</option>
+                    <option value="producto">Producto</option>
+                    <option value="servicio">Servicio</option>
+                    <option value="combo">Combo</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Contenedor Principal (Maestro-Detalle) -->
+        <div class="main-container grid grid-cols-1 md:grid-cols-3 gap-6 bg-white rounded-lg shadow-lg overflow-hidden">
+            
+            <!-- Columna Izquierda: Lista de Items -->
+            <div class="md:col-span-1 border-r border-gray-200 flex flex-col">
+                <div id="itemListContainer" class="scrollable flex-1">
+                    <!-- Los items se cargarán aquí -->
+                </div>
+                <div id="itemListPagination" class="border-t border-gray-200 p-2"></div>
+            </div>
+            
+            <!-- Columna Derecha: Detalle del Item -->
+            <div id="itemDetailContainer" class="scrollable md:col-span-2 p-6">
+                <!-- El detalle del item seleccionado se mostrará aquí -->
+                <div id="detailPlaceholder" class="flex flex-col items-center justify-center h-full text-gray-400">
+                    <i class="fas fa-search-plus text-6xl"></i>
+                    <p class="mt-4 text-lg">Selecciona un ítem de la lista para ver los detalles.</p>
+                </div>
+                
+                <div id="detailContent" class="hidden space-y-6">
+                    <!-- Contenido dinámico -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+            // --- Firebase ---
+            const firebaseConfig = {
+                apiKey: "AIzaSyC4ksfNjhE_31i-BnmV6lOZg2fMq201p0A",
+                authDomain: "sistema-productividad-equipo.firebaseapp.com",
+                projectId: "sistema-productividad-equipo",
+                storageBucket: "sistema-productividad-equipo.appspot.com",
+                messagingSenderId: "196802708765",
+                appId: "1:196802708765:web:af4265d7ac7f50b6fecdf4",
+            };
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            const db = firebase.firestore();
+            const storage = firebase.storage();
+
+            // Asegurar auth anónima
+            try { if (!firebase.auth().currentUser) await firebase.auth().signInAnonymously(); } catch (e) { console.warn('Auth anónima falló', e); }
+
+            // Cache local de ítems
+            let itemsCache = [];
+            
+            // --- ELEMENTOS DEL DOM ---
+            const searchInput = document.getElementById('searchInput');
+            const filterTipo = document.getElementById('filterTipo');
+            const itemListContainer = document.getElementById('itemListContainer');
+            const itemDetailContainer = document.getElementById('itemDetailContainer');
+            const detailPlaceholder = document.getElementById('detailPlaceholder');
+            const detailContent = document.getElementById('detailContent');
+            
+            let lastSelected = null; // Para guardar el último item seleccionado
+            let isAdmin = false; // Determinar permisos para mostrar costos
+            let userPermissions = [];
+            let canEdit = false;
+            let canDelete = false;
+            // Estado de paginación
+            const ITEMS_PAGE_SIZE = 6;
+            let itemsFiltered = [];
+            let itemsPage = 1;
+            
+            // --- FUNCIÓN: RENDERIZAR LISTA ---
+            function pickThumb(item){
+                // Selecciona la mejor miniatura disponible del ítem
+                // 1) Si hay multimedia (array): prioriza título "Imagen Principal"; si no, la primera no archivada con url/dataUrl
+                try{
+                    if (Array.isArray(item.multimedia) && item.multimedia.length){
+                        const pref = item.multimedia.find(m => (m.title||'').toLowerCase().includes('imagen principal') && (m.url || m.dataUrl) && !m.archived);
+                        const any = item.multimedia.find(m => (m.url || m.dataUrl) && !m.archived) || item.multimedia.find(m => (m.url || m.dataUrl));
+                        const mm = pref || any;
+                        return mm ? (mm.url || mm.dataUrl) : null;
+                    }
+                    if (item.multimedia_metadata && typeof item.multimedia_metadata === 'object'){
+                        const metas = Object.values(item.multimedia_metadata);
+                        const pref = metas.find(m => (m.title||'').toLowerCase().includes('imagen principal') && (m.url || m.dataUrl));
+                        const any = metas.find(m => (m.url || m.dataUrl));
+                        const mm = pref || any;
+                        return mm ? (mm.url || mm.dataUrl) : null;
+                    }
+                }catch(e){}
+                return null;
+            }
+
+            function renderList(items) {
+                itemListContainer.innerHTML = ''; // Limpiar lista
+                
+                if (items.length === 0) {
+                    itemListContainer.innerHTML = `<p class="p-4 text-center text-gray-500">No se encontraron ítems.</p>`;
+                    return;
+                }
+                
+                items.forEach(item => {
+                    let icon = 'fa-box';
+                    if (item.tipo === 'servicio') icon = 'fa-concierge-bell';
+                    if (item.tipo === 'combo') icon = 'fa-boxes-stacked';
+                    const thumb = pickThumb(item);
+                    
+                    const itemHTML = `
+                        <div class="list-item flex items-center p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50" data-id="${item.id}">
+                            ${thumb ? `<div class=\"w-12 h-12 rounded-md overflow-hidden border bg-gray-100 flex-shrink-0\"><img src=\"${thumb}\" class=\"w-full h-full object-cover\" alt=\"thumb\"></div>` : `<i class=\"fas ${icon} text-lg text-blue-600 w-8 text-center\"></i>`}
+                            <div class="ml-3 flex-grow min-w-0">
+                                <p class="font-semibold text-gray-800">${item.descripcion || 'Sin descripción'}</p>
+                                <p class="text-sm text-gray-500 truncate">${item.sku || ''} ${item.marca ? '| ' + item.marca : ''}</p>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-400"></i>
+                        </div>
+                    `;
+                    itemListContainer.insertAdjacentHTML('beforeend', itemHTML);
+                });
+            }
+            
+            // --- FUNCIÓN: RENDERIZAR DETALLE ---
+            function resolveImageUrl(meta) {
+                if (!meta) return null;
+                return meta.url || meta.dataUrl || null;
+            }
+
+            function escapeHtml(s){
+                return (''+(s==null?'':s)).replace(/[&<>"]+/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+            }
+            function renderTaxonomy(tax){
+                if (!tax || !tax.category_id) return '';
+                const attrs = tax.attributes || {};
+                const rows = Object.keys(attrs).map(id=>{
+                    const a = attrs[id] || {}; const label = escapeHtml(a.label||''); const type = a.type||'text';
+                    if (type==='boolean'){
+                        return `<div class="flex items-start gap-2"><span class="text-gray-500">${label}:</span><span class="font-medium">${a.value? 'Sí':'No'}</span></div>`;
+                    } else if (type==='select'){
+                        const disp = Array.isArray(a.display)? a.display.join(', ') : (a.display || a.value || '');
+                        return `<div class="flex items-start gap-2"><span class="text-gray-500">${label}:</span><span class="font-medium">${escapeHtml(disp)}</span></div>`;
+                    } else if (type==='media'){
+                        const list = Array.isArray(a.value)? a.value : [];
+                        if (!list.length) return `<div class="flex items-start gap-2"><span class="text-gray-500">${label}:</span><span class="font-medium text-gray-400">—</span></div>`;
+                        const thumbs = list.slice(0,6).map(m=> m.kind==='image' && (m.url||m.dataUrl) ? `<img src="${escapeHtml(m.url||m.dataUrl)}" alt="" class="w-10 h-10 object-cover rounded border">` : `<span class="px-2 py-1 text-[11px] rounded bg-gray-100 text-gray-700"><i class="fa fa-video mr-1"></i>Video</span>`).join(' ');
+                        const more = list.length>6 ? `<span class="text-xs text-gray-500 ml-2">+${list.length-6} más</span>` : '';
+                        return `<div><div class="text-gray-500">${label}:</div><div class="mt-1 flex items-center gap-2 flex-wrap">${thumbs}${more}</div></div>`;
+                    } else if (type==='document'){
+                        const list = Array.isArray(a.value)? a.value : [];
+                        const links = list.map(d=> `<a href="${escapeHtml(d.url||'#')}" target="_blank" class="px-2 py-1 text-[11px] rounded bg-cyan-50 text-cyan-700 border border-cyan-200 inline-flex items-center gap-1"><i class="fa fa-file"></i><span class="truncate max-w-[180px]">${escapeHtml(d.name||d.url||'doc')}</span></a>`).join(' ');
+                        return `<div><div class="text-gray-500">${label}:</div><div class="mt-1 flex items-center gap-2 flex-wrap">${links || '<span class="font-medium text-gray-400">—</span>'}</div></div>`;
+                    } else if (type==='number'){
+                        return `<div class="flex items-start gap-2"><span class="text-gray-500">${label}:</span><span class="font-medium">${(a.value==null||a.value==='')? '—' : escapeHtml(a.value)}</span></div>`;
+                    } else {
+                        return `<div class="flex items-start gap-2"><span class="text-gray-500">${label}:</span><span class="font-medium">${escapeHtml(a.value||'')}</span></div>`;
+                    }
+                }).join('');
+                return `<div class="mt-4">
+                    <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Taxonomía</h4>
+                    <div class="p-3 border rounded bg-gray-50">
+                        <div class="text-sm font-semibold text-gray-800 mb-2"><i class="fa fa-tags text-gray-500 mr-1"></i>${escapeHtml(tax.category_name||'Categoría')}</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">${rows || '<div class="text-gray-500">Sin atributos</div>'}</div>
+                    </div>
+                </div>`;
+            }
+            function renderDetails(itemId) {
+                const item = itemsCache.find(i => i.id === itemId);
+                if (!item) return;
+                
+                // Generar HTML para la galería de imágenes
+                let galleryHTML = '<p class="text-sm text-gray-500 italic">Este ítem no tiene imágenes.</p>';
+                // Soporte para estructuras distintas: multimedia (array) o multimedia_metadata (obj)
+                if (Array.isArray(item.multimedia) && item.multimedia.length > 0) {
+                    galleryHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">' + item.multimedia.map(m => {
+                        const url = resolveImageUrl(m);
+                        if (!url) return '';
+                        return `
+                            <figure class="border rounded-lg overflow-hidden shadow-sm">
+                                <img src="${url}" alt="${m.title || 'Imagen de item'}" class="w-full h-40 object-cover bg-gray-200">
+                                <figcaption class="p-3">
+                                    <p class="font-medium text-sm text-gray-800">${m.title || 'Sin Título'}</p>
+                                    <p class="text-xs text-gray-600">${m.description || 'Sin Descripción'}</p>
+                                </figcaption>
+                            </figure>`;
+                    }).join('') + '</div>';
+                } else if (item.multimedia_metadata && Object.keys(item.multimedia_metadata).length > 0) {
+                    galleryHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
+                    for (const key in item.multimedia_metadata) {
+                        const meta = item.multimedia_metadata[key];
+                        const url = resolveImageUrl(meta);
+                        if (!url) continue;
+                        galleryHTML += `
+                            <figure class="border rounded-lg overflow-hidden shadow-sm">
+                                <img src="${url}" alt="${meta.title || 'Imagen de item'}" class="w-full h-40 object-cover bg-gray-200">
+                                <figcaption class="p-3">
+                                    <p class="font-medium text-sm text-gray-800">${meta.title || 'Sin Título'}</p>
+                                    <p class="text-xs text-gray-600">${meta.description || 'Sin Descripción'}</p>
+                                </figcaption>
+                            </figure>`;
+                    }
+                    galleryHTML += '</div>';
+                }
+                
+                // Generar HTML para los detalles
+                const showCost = !!isAdmin;
+                const taxonomyHTML = renderTaxonomy(item.taxonomy);
+                const detailHTML = `
+                    <!-- Título y SKU -->
+                    <div>
+                        <span class="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full capitalize">${item.tipo}</span>
+                        <h2 class="text-2xl font-bold text-gray-900 mt-2">${item.descripcion || 'Sin descripción'}</h2>
+                        <p class="text-md text-gray-500">${item.sku || ''} ${(item.marca || item.modelo) ? `| ${item.marca || ''} ${item.modelo || ''}` : ''}</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            ${canEdit ? `<button id="btnEditItem" class="px-3 py-2 bg-cyan-600 text-white rounded-md hover:bg-cyan-700"><i class="fa fa-pen mr-1"></i>Editar</button>` : ''}
+                            ${canDelete ? `<button id="btnDeleteItem" class="px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"><i class="fa fa-trash mr-1"></i>Eliminar</button>` : ''}
+                            <button id="btnToggleMore" class="px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"><i class="fa fa-angles-down mr-1"></i>Ver más</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Precios -->
+                    <div class="border-t border-b border-gray-200 py-4">
+                        <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Precios (USD)</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            ${showCost ? `<div>
+                                <p class=\"text-sm text-gray-600\">Costo</p>
+                                <p class=\"text-xl font-semibold text-gray-800\"><span id=\"costValue\" class=\"blur-sm select-none\">$${item.costo || '0.00'}</span> <button id=\"revealCost\" class=\"ml-2 px-2 py-1 text-xs bg-gray-200 rounded\">ver</button></p>
+                            </div>` : ''}
+                            <div>
+                                <p class="text-sm text-gray-600">Precio de Venta</p>
+                                <p class="text-xl font-semibold text-blue-700">$${item.precio_venta_usd || item.precioVenta || '0.00'}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Galería de Imágenes -->
+                    <div>
+                        <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Galería de Imágenes</h4>
+                        ${galleryHTML}
+                    </div>
+                    
+                    <!-- Taxonomía -->
+                    ${taxonomyHTML}
+
+                    <!-- Otros Datos (Simulado) -->
+                    <div>
+                        <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Otros Datos</h4>
+                        <p class="text-sm text-gray-700"><strong>Propósito:</strong> ${item.proposito || 'N/D'}</p>
+                        <!-- Aquí se podrían agregar más datos del item si se recolectan -->
+                    </div>
+                    <div id="moreSection" class="hidden border-t pt-4">
+                        <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Más información</h4>
+                        <div class="text-xs text-gray-700 bg-gray-50 border rounded p-3 space-y-1">
+                            <div><span class="font-medium">Propósito:</span> ${item.proposito || 'N/D'}</div>
+                            <div><span class="font-medium">Serie:</span> ${item.llevaNumeroSerie || 'N/D'} | <span class="font-medium">Lote:</span> ${item.manejaLote || 'N/D'} | <span class="font-medium">Vencimiento:</span> ${item.manejaVencimiento || 'N/D'}</div>
+                            <div><span class="font-medium">Impuesto:</span> ${item.tipoImpuesto || 'N/D'} ${typeof item.impuestoAsignado==='number' ? `(${item.impuestoAsignado}%)` : ''}</div>
+                            <div><span class="font-medium">Oferta:</span> ${item.estaEnOferta ? (item.ofertaTipo + ' ' + (item.ofertaValor||'') + (item.ofertaInicio?` | ${item.ofertaInicio}`:'') + (item.ofertaFin?` → ${item.ofertaFin}`:'')) : 'No'}</div>
+                            <div><span class="font-medium">Stock:</span> Min ${item.stockMinimo ?? 'N/D'} | Máx ${item.stockMaximo ?? 'N/D'} | Repo ${item.tiempoReposicion ?? 'N/D'} días</div>
+                            <div><span class="font-medium">Dimensiones:</span> ${item.altoCm ?? '–'} x ${item.anchoCm ?? '–'} x ${item.profundoCm ?? '–'} cm | ${item.pesoKg ?? '–'} kg</div>
+                            ${showCost ? `<div><span class="font-medium">Costo (oculto):</span> <span id="costValueMore" class="blur-sm select-none">$${item.costo || '0.00'}</span> <button id="revealCostMore" class="ml-2 px-2 py-0.5 text-[10px] bg-gray-200 rounded">ver</button></div>` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                detailContent.innerHTML = detailHTML;
+                
+                // Mostrar contenido y ocultar placeholder
+                detailPlaceholder.classList.add('hidden');
+                detailContent.classList.remove('hidden');
+
+                // Acciones detalle
+                const btnEdit = document.getElementById('btnEditItem');
+                const btnMore = document.getElementById('btnToggleMore');
+                const btnDelete = document.getElementById('btnDeleteItem');
+                const moreSec = document.getElementById('moreSection');
+                btnEdit?.addEventListener('click', () => {
+                    // Enviar mensaje al host para abrir "Crear Ítem" en modo edición
+                    window.parent?.postMessage({ type: 'editItem', id: item.id }, '*');
+                });
+                btnDelete?.addEventListener('click', async () => {
+                    if (!confirm('¿Deseas eliminar este ítem permanentemente? Esta acción no se puede deshacer.')) return;
+                    try{
+                        await deleteItemWithStorage(item.id);
+                        alert('Ítem eliminado exitosamente.');
+                        // Actualizar lista y detalle
+                        itemsCache = itemsCache.filter(i=>i.id!==item.id);
+                        filterItems();
+                        detailPlaceholder.classList.remove('hidden');
+                        detailContent.classList.add('hidden');
+                    }catch(err){
+                        console.error('Error eliminando ítem:', err);
+                        alert('No se pudo eliminar el ítem.');
+                    }
+                });
+                btnMore?.addEventListener('click', () => {
+                    moreSec?.classList.toggle('hidden');
+                    if (moreSec?.classList.contains('hidden')) btnMore.innerHTML = '<i class="fa fa-angles-down mr-1"></i>Ver más';
+                    else btnMore.innerHTML = '<i class="fa fa-angles-up mr-1"></i>Ver menos';
+                });
+                const costVal = document.getElementById('costValue');
+                const costBtn = document.getElementById('revealCost');
+                const costVal2 = document.getElementById('costValueMore');
+                const costBtn2 = document.getElementById('revealCostMore');
+                const toggleBlur = (el)=>{ if (!el) return; el.classList.toggle('blur-sm'); };
+                costBtn?.addEventListener('click', ()=> toggleBlur(costVal));
+                costBtn2?.addEventListener('click', ()=> toggleBlur(costVal2));
+            }
+            
+            // --- FUNCIÓN: FILTRAR ITEMS ---
+            function filterItems() {
+                const searchTerm = searchInput.value.toLowerCase();
+                const tipo = filterTipo.value;
+                
+                const filtered = itemsCache.filter(item => {
+                    // FIX: Añadir '|| ""' para evitar el error .toLowerCase() en propiedades indefinidas (ej. 'marca' en un 'combo')
+                    const matchesSearch = (item.descripcion || '').toLowerCase().includes(searchTerm) ||
+                                          (item.sku || '').toLowerCase().includes(searchTerm) ||
+                                          (item.marca || '').toLowerCase().includes(searchTerm);
+                                          
+                    const matchesType = (tipo === 'todos') || (item.tipo === tipo);
+                    
+                    return matchesSearch && matchesType;
+                });
+                // actualizar estado y página
+                itemsFiltered = filtered;
+                itemsPage = 1;
+                renderCurrentPage();
+                
+                // Limpiar detalle si no hay resultados
+                if (filtered.length === 0) {
+                    detailPlaceholder.classList.remove('hidden');
+                    detailContent.classList.add('hidden');
+                }
+            }
+
+            function renderPagination(containerId, current, total, onChange){
+                const host = document.getElementById(containerId);
+                if (!host) return;
+                if (total <= 1){ host.innerHTML = ''; return; }
+                const btn = (label, page, disabled=false, active=false) => `<button data-page="${page}" class="px-2 py-1 rounded ${active? 'bg-cyan-600 text-white':'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${disabled? 'opacity-50 cursor-not-allowed':''}" ${disabled? 'disabled':''}>${label}</button>`;
+                let html = '<div class="flex items-center justify-between text-sm">'
+                    + `<div class="text-gray-500">${Math.min((current-1)*ITEMS_PAGE_SIZE+1, itemsFiltered.length)}–${Math.min(current*ITEMS_PAGE_SIZE, itemsFiltered.length)} de ${itemsFiltered.length}</div>`
+                    + '<div class="flex items-center gap-1">'
+                    + btn('«', 1, current===1)
+                    + btn('‹', current-1, current===1)
+                ;
+                const windowSize = 5;
+                const start = Math.max(1, current - Math.floor(windowSize/2));
+                const end = Math.min(total, start + windowSize - 1);
+                for (let p=start; p<=end; p++) html += btn(p, p, false, p===current);
+                html += btn('›', current+1, current===total) + btn('»', total, current===total) + '</div></div>';
+                host.innerHTML = html;
+                host.querySelectorAll('button[data-page]')?.forEach(b=>{
+                    b.addEventListener('click', () => { const p = parseInt(b.getAttribute('data-page'),10); if (!isNaN(p) && p>=1 && p<=total){ itemsPage = p; renderCurrentPage(); } });
+                });
+            }
+
+            function renderCurrentPage(){
+                const totalPages = Math.max(1, Math.ceil(itemsFiltered.length / ITEMS_PAGE_SIZE));
+                const start = (itemsPage - 1) * ITEMS_PAGE_SIZE;
+                const slice = itemsFiltered.slice(start, start + ITEMS_PAGE_SIZE);
+                renderList(slice);
+                renderPagination('itemListPagination', itemsPage, totalPages, (p)=>{ itemsPage=p; renderCurrentPage(); });
+            }
+            
+            // --- EVENT LISTENERS ---
+            
+            // Listeners de filtro
+            searchInput.addEventListener('input', filterItems);
+            filterTipo.addEventListener('change', filterItems);
+            
+            // Listener de clic en la lista (Delegación de eventos)
+            itemListContainer.addEventListener('click', (e) => {
+                const clickedItem = e.target.closest('.list-item');
+                if (!clickedItem) return;
+                
+                const itemId = clickedItem.dataset.id;
+                
+                // Resaltar item seleccionado
+                if (lastSelected) {
+                    lastSelected.classList.remove('selected');
+                }
+                clickedItem.classList.add('selected');
+                lastSelected = clickedItem;
+                
+                // Renderizar detalle
+                renderDetails(itemId);
+                // Notificar selección al host para presencia/actividad
+                try{
+                    const it = itemsCache.find(i=>i.id===itemId);
+                    window.parent?.postMessage({ type: 'searchSelection', id: itemId, descripcion: it?.descripcion || '' }, '*');
+                }catch(err){}
+            });
+            
+            // --- INICIALIZACIÓN ---
+            // Suscripción a Firestore: items
+            db.collection('items').orderBy('descripcion').onSnapshot(snap => {
+                itemsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                filterItems();
+            }, err => {
+                console.error('Error cargando ítems:', err);
+            });
+
+            // Mensajes desde el host (para devolver el foco al buscador)
+            window.addEventListener('message', (event) => {
+                if (!event.data) return;
+                if (event.data.type === 'focusSearch') {
+                    searchInput?.focus();
+                    if (typeof event.data.query === 'string') {
+                        searchInput.value = event.data.query;
+                        filterItems();
+                    }
+                } else if (event.data.type === 'hostAuthReady') {
+                    userPermissions = event.data.permissions || [];
+                    const roleNames = event.data.roleNames || [];
+                    isAdmin = (Array.isArray(userPermissions) && userPermissions.includes('manage_roles_permissions')) || (Array.isArray(roleNames) && roleNames.includes('Administrador'));
+                    canEdit = isAdmin || (userPermissions.includes('manage_items'));
+                    canDelete = isAdmin || (userPermissions.includes('delete_items'));
+                }
+            });
+            // --- Eliminación de Ítem con limpieza de Storage ---
+            function collectStorageRefsFromItem(item){
+                const refs = [];
+                try{
+                    // multimedia (array)
+                    if (Array.isArray(item.multimedia)){
+                        item.multimedia.forEach(m=>{ if (m && (m.path || m.url)) refs.push({ path: m.path, url: m.url }); });
+                    }
+                    // multimedia_metadata (obj)
+                    if (item.multimedia_metadata && typeof item.multimedia_metadata==='object'){
+                        Object.values(item.multimedia_metadata).forEach(m=>{ if (m && (m.path || m.url)) refs.push({ path: m.path, url: m.url }); });
+                    }
+                    // Taxonomía: media/document
+                    const attrs = item.taxonomy && item.taxonomy.attributes ? item.taxonomy.attributes : {};
+                    Object.values(attrs).forEach(a=>{
+                        if (!a || !a.type) return;
+                        if (a.type==='media' || a.type==='document'){
+                            const arr = Array.isArray(a.value)? a.value : [];
+                            arr.forEach(v=>{ if (v && (v.path || v.url)) refs.push({ path: v.path, url: v.url }); });
+                        }
+                    });
+                }catch(e){}
+                // Filtrar duplicados por path/url
+                const seen = new Set();
+                return refs.filter(r=>{
+                    const key = r.path ? ('p:'+r.path) : ('u:'+r.url);
+                    if (seen.has(key)) return false; seen.add(key); return true;
+                });
+            }
+
+            async function deleteStorageRefs(refs){
+                for (const r of refs){
+                    try{
+                        if (r.path) await storage.ref().child(r.path).delete();
+                        else if (r.url && r.url.includes('https://firebasestorage.googleapis.com/'))
+                            await storage.refFromURL(r.url).delete();
+                    }catch(e){ /* ignorar errores de archivos no encontrados o externos */ }
+                }
+            }
+
+            async function deleteItemWithStorage(itemId){
+                // Traer el ítem actual por si el cache está desactualizado
+                const snap = await db.collection('items').doc(itemId).get();
+                if (!snap.exists) { await db.collection('items').doc(itemId).delete().catch(()=>{}); return; }
+                const data = { id: snap.id, ...snap.data() };
+                const refs = collectStorageRefsFromItem(data);
+                await deleteStorageRefs(refs);
+                await db.collection('items').doc(itemId).delete();
+            }
+            // Pedir contexto al host (permisos/usuario)
+            try { window.parent?.postMessage({ type: 'requestUserData' }, '*'); } catch (e) {}
+
+            // Atajo para admins: Alt+C alterna visibilidad de costos
+            window.addEventListener('keydown', (e)=>{
+                if (!isAdmin) return;
+                if (e.altKey && (e.key === 'c' || e.key === 'C')){
+                    const v1 = document.getElementById('costValue');
+                    const v2 = document.getElementById('costValueMore');
+                    [v1,v2].forEach(el=>{ if (el) el.classList.toggle('blur-sm'); });
+                }
+            });
+            
+        });
+    </script>
+</body>
+</html>
+

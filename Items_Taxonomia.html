@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Taxonomía de Ítems</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    .modal-bg { background: rgba(0,0,0,0.6); }
+    .scrollable { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .badge { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 9999px; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .btn-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    @media (max-width: 640px){ .btn-text { display: none; } .btn-icon { margin-right: 0 !important; } }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div class="max-w-6xl mx-auto p-4">
+    <header class="mb-4 flex items-center justify-between">
+      <h1 class="text-2xl font-bold text-gray-800">Taxonomía de Inventario</h1>
+      <div class="text-xs text-gray-500">Gestione categorías y atributos</div>
+    </header>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <!-- CATEGORÍAS Y ASIGNACIÓN DE ATRIBUTOS -->
+      <section class="bg-white border rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Categorías</h2>
+        </div>
+        <form id="catForm" class="space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm text-gray-700">Nombre</label>
+              <input id="catName" type="text" class="w-full border rounded px-2 py-1.5" placeholder="Ej: Impresoras">
+            </div>
+            <div>
+              <label class="text-sm text-gray-700">Código</label>
+              <input id="catCode" type="text" class="w-full border rounded px-2 py-1.5" placeholder="EJ: IMPRESORAS">
+            </div>
+          </div>
+          <div>
+            <label class="text-sm text-gray-700">Descripción</label>
+            <input id="catDesc" type="text" class="w-full border rounded px-2 py-1.5" placeholder="Uso general">
+          </div>
+          <div class="flex justify-end">
+            <button id="saveCatBtn" type="submit" class="px-4 py-2 rounded bg-cyan-600 text-white"><i class="fa fa-save mr-1"></i>Guardar categoría</button>
+          </div>
+        <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div>
+            <label class="text-sm text-gray-700">Categoría</label>
+            <select id="catSelect" class="w-full border rounded px-2 py-1.5 bg-white"></select>
+          </div>
+          <div>
+            <label class="text-sm text-gray-700">Agregar atributo</label>
+            <select id="addAttrToCat" class="w-full border rounded px-2 py-1.5 bg-white"></select>
+          </div>
+        </div>
+        <div id="catAttrs" class="mt-3 space-y-2"></div>
+      </section>
+      <!-- ATRIBUTOS -->
+      <section class="bg-white border rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Atributos</h2>
+          <div class="flex items-center gap-2">
+            <button id="seedComputersBtn" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm"><i class="fa fa-laptop mr-1"></i>PC/Laptop</button>
+            <button id="seedBtn" class="px-3 py-1.5 rounded bg-amber-500 text-white text-sm"><i class="fa fa-seedling mr-1"></i>Ejemplos</button>
+          </div>
+        </div>
+        <form id="attrForm" class="space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm text-gray-700">Nombre</label>
+              <input id="attrName" type="text" class="w-full border rounded px-2 py-1.5" placeholder="Ej: Tecnología de impresión">
+            </div>
+            <div>
+              <label class="text-sm text-gray-700">Código</label>
+              <input id="attrCode" type="text" class="w-full border rounded px-2 py-1.5" placeholder="EJ: TECNOLOGIA">
+            </div>
+            <div>
+              <label class="text-sm text-gray-700">Tipo</label>
+              <select id="attrType" class="w-full border rounded px-2 py-1.5 bg-white">
+                <option value="text">Texto</option>
+                <option value="number">Número</option>
+                <option value="select">Selección</option>
+                <option value="boolean">Sí/No</option>
+                <option value="media">Foto/Video</option>
+                <option value="document">Documento</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="text-sm text-gray-700 inline-flex items-center"><input id="attrRequired" type="checkbox" class="mr-2"> Requerido</label>
+              <label class="text-sm text-gray-700 inline-flex items-center"><input id="attrMultiple" type="checkbox" class="mr-2"> Múltiple (select)</label>
+            </div>
+          </div>
+          <div id="optionsBox" class="hidden">
+            <div class="flex items-end gap-2">
+              <div class="flex-1">
+                <label class="text-sm text-gray-700">Opción (etiqueta)</label>
+                <input id="optLabel" type="text" class="w-full border rounded px-2 py-1.5" placeholder="Ej: Láser">
+              </div>
+              <div class="w-40">
+                <label class="text-sm text-gray-700">Valor</label>
+                <input id="optValue" type="text" class="w-full border rounded px-2 py-1.5" placeholder="laser">
+              </div>
+              <button id="addOptBtn" type="button" class="px-3 py-2 rounded bg-gray-200"><i class="fa fa-plus"></i></button>
+            </div>
+            <ul id="optList" class="mt-2 space-y-1"></ul>
+          </div>
+          <div class="flex justify-end">
+            <button id="saveAttrBtn" type="submit" class="px-4 py-2 rounded bg-cyan-600 text-white"><i class="fa fa-save mr-1"></i>Guardar atributo</button>
+          </div>
+        </form>
+        <div class="mt-4 border rounded">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600">
+              <tr><th class="p-2 text-left">Nombre</th><th class="p-2">Tipo</th><th class="p-2">Requerido</th><th class="p-2">Múltiple</th><th class="p-2">Acciones</th></tr>
+            </thead>
+            <tbody id="attrTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+  <script>
+    let db = null;
+    let invAttrCol = null, invCatCol = null;
+    function initFirebase(cfg){
+      if (!firebase.apps.length) firebase.initializeApp(cfg);
+      db = firebase.firestore();
+      invAttrCol = db.collection('inventory_attributes');
+      invCatCol = db.collection('inventory_categories');
+      if (!firebase.auth().currentUser) firebase.auth().signInAnonymously().catch(()=>{});
+    }
+
+    // Pedir contexto al host y esperar config
+    window.parent?.postMessage({ type: 'requestUserData' }, '*');
+    window.addEventListener('message', (ev)=>{
+      if (ev.data && ev.data.type === 'hostAuthReady' && ev.data.firebaseConfig){ initFirebase(ev.data.firebaseConfig); loadAll(); }
+    });
+
+    const attrForm = document.getElementById('attrForm');
+    const attrName = document.getElementById('attrName');
+    const attrCode = document.getElementById('attrCode');
+    const attrType = document.getElementById('attrType');
+    const attrRequired = document.getElementById('attrRequired');
+    const attrMultiple = document.getElementById('attrMultiple');
+    const optionsBox = document.getElementById('optionsBox');
+    const optLabel = document.getElementById('optLabel');
+    const optValue = document.getElementById('optValue');
+    const addOptBtn = document.getElementById('addOptBtn');
+    const optList = document.getElementById('optList');
+    const attrTable = document.getElementById('attrTable');
+
+    const catForm = document.getElementById('catForm');
+    const catName = document.getElementById('catName');
+    const catCode = document.getElementById('catCode');
+    const catDesc = document.getElementById('catDesc');
+    const catSelect = document.getElementById('catSelect');
+    const addAttrToCat = document.getElementById('addAttrToCat');
+    const catAttrs = document.getElementById('catAttrs');
+    const seedBtn = document.getElementById('seedBtn');
+
+    let optState = [];
+
+    attrType.addEventListener('change', ()=>{
+      const t = attrType.value;
+      optionsBox.classList.toggle('hidden', t !== 'select');
+      attrMultiple.parentElement.classList.toggle('hidden', t !== 'select');
+    });
+    addOptBtn.addEventListener('click', ()=>{
+      const label = (optLabel.value||'').trim(); const value = (optValue.value||'').trim(); if (!label || !value) return;
+      optState.push({ label, value }); optLabel.value=''; optValue.value=''; renderOptList();
+    });
+    function renderOptList(){
+      optList.innerHTML = optState.map((o,i)=>`<li class="flex items-center justify-between border rounded px-2 py-1 text-sm"><span>${o.label} <span class="text-gray-500">(${o.value})</span></span><button type="button" class="px-2 py-1 bg-red-500 text-white rounded" data-del="${i}"><i class="fa fa-trash"></i></button></li>`).join('');
+    }
+    optList.addEventListener('click', (e)=>{ const btn = e.target.closest('button[data-del]'); if (!btn) return; const i = parseInt(btn.dataset.del,10); if (!isNaN(i)){ optState.splice(i,1); renderOptList(); } });
+
+    attrForm.addEventListener('submit', async (e)=>{
+      e.preventDefault(); if (!db) return;
+      const name = (attrName.value||'').trim(); const code = (attrCode.value||'').trim(); const type = attrType.value;
+      if (!name) return alert('Nombre requerido');
+      const doc = { name, code: code||null, type, required: !!attrRequired.checked, multiple: type==='select' ? !!attrMultiple.checked : false, options: type==='select'? optState.slice() : null, visible: true, created_at: firebase.firestore.FieldValue.serverTimestamp() };
+      await invAttrCol.add(doc);
+      attrName.value=''; attrCode.value=''; attrType.value='text'; attrRequired.checked=false; attrMultiple.checked=false; optState=[]; renderOptList(); attrType.dispatchEvent(new Event('change'));
+      await Promise.all([loadAttributes(), loadAddableAttrsForCat()]);
+    });
+
+    async function loadAttributes(){
+      if (!db) return;
+      const snap = await invAttrCol.orderBy('name').get();
+      const rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      attrTable.innerHTML = rows.map(r=>{
+        const req = r.required? 'Sí':'No'; const mult = r.multiple? 'Sí':'No';
+        return `<tr data-id="${r.id}"><td class="p-2">${r.name}</td><td class="p-2 text-center">${r.type}</td><td class="p-2 text-center">${req}</td><td class="p-2 text-center">${mult}</td><td class="p-2 text-center"><button class="px-2 py-1 bg-blue-600 text-white rounded edit-attr"><i class="fa fa-pen"></i></button> <button class="px-2 py-1 bg-red-600 text-white rounded del-attr"><i class="fa fa-trash"></i></button></td></tr>`;
+      }).join('');
+    }
+
+    attrTable.addEventListener('click', async (e)=>{
+      const row = e.target.closest('tr[data-id]'); if (!row) return;
+      const id = row.dataset.id;
+      if (e.target.closest('.del-attr')){ if (confirm('¿Eliminar atributo?')){ await invAttrCol.doc(id).delete(); await Promise.all([loadAttributes(), loadAddableAttrsForCat(), refreshCatAttrs()]); } return; }
+      if (e.target.closest('.edit-attr')){
+        const d = await invAttrCol.doc(id).get(); const r = d.data();
+        attrName.value=r.name||''; attrCode.value=r.code||''; attrType.value=r.type||'text'; attrRequired.checked=!!r.required; attrMultiple.checked=!!r.multiple; optState=(Array.isArray(r.options)? r.options.slice():[]); renderOptList(); attrType.dispatchEvent(new Event('change'));
+        document.getElementById('saveAttrBtn').textContent = 'Actualizar atributo';
+        attrForm.onsubmit = async (ev)=>{ ev.preventDefault(); const name=(attrName.value||'').trim(); if(!name) return alert('Nombre requerido'); const doc = { name, code:(attrCode.value||'').trim()||null, type: attrType.value, required: !!attrRequired.checked, multiple: attrType.value==='select'? !!attrMultiple.checked : false, options: attrType.value==='select'? optState.slice(): null, visible: true }; await invAttrCol.doc(id).update(doc); document.getElementById('saveAttrBtn').textContent = 'Guardar atributo'; attrForm.onsubmit = null; attrForm.dispatchEvent(new Event('submit')); };
+      }
+    });
+
+    catForm.addEventListener('submit', async (e)=>{
+      e.preventDefault(); if (!db) return;
+      const name = (catName.value||'').trim(); const code = (catCode.value||'').trim(); const description = (catDesc.value||'').trim();
+      if (!name) return alert('Nombre requerido');
+      await invCatCol.add({ name, code: code||null, description: description||null, attributes: [], created_at: firebase.firestore.FieldValue.serverTimestamp() });
+      catName.value=''; catCode.value=''; catDesc.value=''; await loadCategories();
+    });
+
+    async function loadCategories(){
+      const snap = await invCatCol.orderBy('name').get();
+      const cats = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      catSelect.innerHTML = cats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+      await loadAddableAttrsForCat(); await refreshCatAttrs();
+    }
+
+    async function loadAddableAttrsForCat(){
+      const snap = await invAttrCol.orderBy('name').get();
+      const attrs = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      addAttrToCat.innerHTML = `<option value="">— Atributo —</option>` + attrs.map(a=>`<option value="${a.id}">${a.name} · ${a.type}${a.type==='select'&&a.multiple?' (múltiple)':''}</option>`).join('');
+    }
+
+    async function refreshCatAttrs(){
+      const catId = catSelect.value; if (!catId) { catAttrs.innerHTML = '<div class="text-sm text-gray-500">No hay categorías.</div>'; return; }
+      const doc = await invCatCol.doc(catId).get(); const c = doc.data() || { attributes: [] };
+      const attrs = Array.isArray(c.attributes) ? c.attributes : [];
+      if (!attrs.length){ catAttrs.innerHTML = '<div class="text-sm text-gray-500">Sin atributos en esta categoría.</div>'; return; }
+      // Cargar defs
+      const ids = attrs.map(a=>a.attribute_id);
+      const chunks = (arr, size)=> arr.length? [arr.slice(0,size), ...chunks(arr.slice(size), size)] : [];
+      let defs = [];
+      for (const ch of chunks(ids, 10)){ const s = await invAttrCol.where(firebase.firestore.FieldPath.documentId(), 'in', ch).get(); defs = defs.concat(s.docs.map(d=>({ id:d.id, ...d.data() }))); }
+      const map = defs.reduce((acc,a)=>{ acc[a.id]=a; return acc; },{});
+      catAttrs.innerHTML = attrs.slice().sort((a,b)=>(a.order||0)-(b.order||0)).map((cfg,i)=>{
+        const def = map[cfg.attribute_id] || { name:'Atributo', type:'text' };
+        return `<div class="border rounded p-2 flex items-center justify-between" data-attr="${cfg.attribute_id}">
+          <div>
+            <div class="font-medium text-sm">${def.name} <span class="text-xs text-gray-500">(${def.type})</span></div>
+            <div class="text-xs text-gray-500">${cfg.required? 'Requerido · ':''}${cfg.visible===false? 'Oculto':''}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs inline-flex items-center"><input type="checkbox" class="mr-1 req-toggle" ${cfg.required? 'checked':''}>Requerido</label>
+            <label class="text-xs inline-flex items-center"><input type="checkbox" class="mr-1 vis-toggle" ${cfg.visible===false? '':'checked'}>Visible</label>
+            <button class="px-2 py-1 bg-gray-200 rounded up-btn"><i class="fa fa-arrow-up"></i></button>
+            <button class="px-2 py-1 bg-gray-200 rounded down-btn"><i class="fa fa-arrow-down"></i></button>
+            <button class="px-2 py-1 bg-red-500 text-white rounded del-btn"><i class="fa fa-trash"></i></button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    addAttrToCat.addEventListener('change', async ()=>{
+      const attrId = addAttrToCat.value; if (!attrId) return;
+      const catId = catSelect.value; if (!catId) return;
+      const doc = await invCatCol.doc(catId).get(); const c = doc.data() || { attributes: [] };
+      const arr = Array.isArray(c.attributes) ? c.attributes : [];
+      if (!arr.find(a=>a.attribute_id===attrId)) arr.push({ attribute_id: attrId, required: false, visible: true, order: (arr.length? Math.max(...arr.map(a=>a.order||0))+1 : 1) });
+      await invCatCol.doc(catId).update({ attributes: arr }); addAttrToCat.value=''; await refreshCatAttrs();
+    });
+    catSelect.addEventListener('change', ()=>{ refreshCatAttrs(); window.parent?.postMessage({ type:'taxonomyFocus', path: 'Categorías/'+(catSelect.options[catSelect.selectedIndex]?.text||'') }, '*'); });
+    catAttrs.addEventListener('click', async (e)=>{
+      const row = e.target.closest('[data-attr]'); if (!row) return; const attrId = row.getAttribute('data-attr'); const catId = catSelect.value;
+      const doc = await invCatCol.doc(catId).get(); const c = doc.data() || { attributes: [] }; const arr = Array.isArray(c.attributes)? c.attributes: [];
+      const idx = arr.findIndex(a=>a.attribute_id===attrId); if (idx<0) return;
+      if (e.target.closest('.del-btn')){ arr.splice(idx,1); await invCatCol.doc(catId).update({ attributes: arr }); await refreshCatAttrs(); return; }
+      if (e.target.closest('.up-btn')){ if (idx>0){ const tmp = arr[idx-1]; arr[idx-1]=arr[idx]; arr[idx]=tmp; await invCatCol.doc(catId).update({ attributes: arr }); await refreshCatAttrs(); } return; }
+      if (e.target.closest('.down-btn')){ if (idx<arr.length-1){ const tmp = arr[idx+1]; arr[idx+1]=arr[idx]; arr[idx]=tmp; await invCatCol.doc(catId).update({ attributes: arr }); await refreshCatAttrs(); } return; }
+      if (e.target.closest('.req-toggle')){ arr[idx].required = !arr[idx].required; await invCatCol.doc(catId).update({ attributes: arr }); return; }
+      if (e.target.closest('.vis-toggle')){ arr[idx].visible = !(arr[idx].visible!==false); await invCatCol.doc(catId).update({ attributes: arr }); return; }
+    });
+
+    async function seedExamples(){
+      // Si ya hay datos, no sembrar
+      const aSnap = await invAttrCol.limit(1).get(); if (!aSnap.empty) return alert('Ya existen atributos.');
+      // Atributos ejemplo
+      const attrs = [
+        { name:'Tecnología de impresión', code:'TECNOLOGIA', type:'select', required:true, multiple:false, options:[{label:'Inyección de tinta', value:'tinta'},{label:'Láser', value:'laser'},{label:'Térmica', value:'termica'}] },
+        { name:'Conectividad', code:'CONECTIVIDAD', type:'select', required:false, multiple:true, options:[{label:'USB', value:'usb'},{label:'Wi‑Fi', value:'wifi'},{label:'Ethernet', value:'ethernet'},{label:'Bluetooth', value:'bt'}] },
+        { name:'Velocidad (ppm)', code:'VELOCIDAD', type:'number', required:false },
+        { name:'Resolución (dpi)', code:'RESOLUCION', type:'number', required:false },
+        { name:'Imprime a color', code:'COLOR', type:'boolean', required:false },
+        { name:'Galería', code:'GALERIA', type:'media', required:false },
+        { name:'Manual de usuario', code:'MANUAL', type:'document', required:false }
+      ];
+      const attrIds = [];
+      for (const a of attrs){ const ref = await invAttrCol.add({ ...a, visible:true, created_at: firebase.firestore.FieldValue.serverTimestamp() }); attrIds.push(ref.id); }
+      const cat = await invCatCol.add({ name:'Impresoras', code:'IMPRESORAS', description:'Dispositivos de impresión', attributes: attrIds.map((id, i)=>({ attribute_id:id, required: attrs[i].required||false, visible:true, order: i+1 })), created_at: firebase.firestore.FieldValue.serverTimestamp() });
+      await Promise.all([loadAttributes(), loadCategories()]);
+      catSelect.value = cat.id; await refreshCatAttrs();
+    }
+
+    async function loadAll(){ await Promise.all([loadAttributes(), loadCategories()]); }
+    seedBtn.addEventListener('click', seedExamples);
+    // --- Siembra de atributos para PC/Laptop ---
+    async function upsertAttrByCode(code, doc){
+      const q = await invAttrCol.where('code','==',code).limit(1).get();
+      if (!q.empty) return q.docs[0].id;
+      const ref = await invAttrCol.add({ ...doc, code, visible:true, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+      return ref.id;
+    }
+    async function upsertCategoryByCode(code, doc){
+      const q = await invCatCol.where('code','==',code).limit(1).get();
+      if (!q.empty) return { id: q.docs[0].id, data: q.docs[0].data() };
+      const ref = await invCatCol.add({ ...doc, code, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+      return { id: ref.id, data: { ...doc, code, attributes: [] } };
+    }
+    async function seedComputers(){
+      // Definir atributos base
+      const baseAttrs = [
+        { code:'FABRICANTE', name:'Fabricante', type:'text', required:true },
+        { code:'MODELO', name:'Modelo', type:'text', required:true },
+        { code:'CPU', name:'CPU / Procesador', type:'text', required:true },
+        { code:'RAM_GB', name:'Memoria RAM (GB)', type:'number', required:true },
+        { code:'ALM_TIPO', name:'Tipo de Almacenamiento', type:'select', required:true, multiple:false, options:[{label:'HDD',value:'hdd'},{label:'SSD SATA',value:'ssd'},{label:'NVMe',value:'nvme'}] },
+        { code:'ALM_GB', name:'Capacidad Principal (GB)', type:'number', required:true },
+        { code:'GPU', name:'Gráficos (GPU)', type:'text', required:false },
+        { code:'SO', name:'Sistema Operativo', type:'select', required:true, multiple:false, options:[{label:'Windows 10',value:'win10'},{label:'Windows 11',value:'win11'},{label:'Linux',value:'linux'},{label:'Sin SO',value:'none'}] },
+        { code:'SERIAL', name:'Número de Serie', type:'text', required:false },
+        { code:'ASSET_TAG', name:'Etiqueta de Activo', type:'text', required:false },
+        { code:'MAC', name:'Dirección MAC', type:'text', required:false },
+        { code:'IP', name:'Dirección IP', type:'text', required:false }
+      ];
+      const laptopExtras = [
+        { code:'SCREEN_IN', name:'Tamaño de Pantalla (")', type:'number', required:false },
+        { code:'RESOL', name:'Resolución de Pantalla', type:'select', required:false, multiple:false, options:[{label:'1366x768',value:'1366x768'},{label:'1920x1080 (FHD)',value:'1920x1080'},{label:'2560x1440 (QHD)',value:'2560x1440'},{label:'3840x2160 (4K)',value:'3840x2160'}] },
+        { code:'BAT_GOOD', name:'Batería en buen estado', type:'boolean', required:false },
+        { code:'CHARGER', name:'Cargador incluido', type:'boolean', required:false },
+        { code:'WEBCAM', name:'Cámara web funciona', type:'boolean', required:false }
+      ];
+      // Upsert atributos y recolectar IDs
+      const attrIds = [];
+      for (const a of baseAttrs){ const id = await upsertAttrByCode(a.code, { name:a.name, type:a.type, required:!!a.required, multiple: a.type==='select'? !!a.multiple : false, options: a.type==='select'? (a.options||[]) : null }); attrIds.push({ id, required: !!a.required }); }
+      const laptopAttrIds = [];
+      for (const a of laptopExtras){ const id = await upsertAttrByCode(a.code, { name:a.name, type:a.type, required:!!a.required, multiple: a.type==='select'? !!a.multiple : false, options: a.type==='select'? (a.options||[]) : null }); laptopAttrIds.push({ id, required: !!a.required }); }
+      // Upsert categorías y asignar atributos (sin duplicar)
+      const desktopCat = await upsertCategoryByCode('DESKTOPS', { name:'Computadoras de Escritorio', description:'PC de escritorio' , attributes: [] });
+      const laptopCat = await upsertCategoryByCode('LAPTOPS', { name:'Laptops', description:'Computadoras portátiles' , attributes: [] });
+      const appendAttrs = async (cat, list)=>{
+        const current = Array.isArray(cat.data.attributes)? cat.data.attributes : [];
+        let arr = current.slice();
+        for (let i=0;i<list.length;i++){
+          const aid = list[i].id; const required = list[i].required;
+          if (!arr.find(x=>x.attribute_id===aid)) arr.push({ attribute_id: aid, required, visible:true, order: (arr.length? Math.max(...arr.map(a=>a.order||0))+1 : 1) });
+        }
+        await invCatCol.doc(cat.id).update({ attributes: arr });
+      };
+      await appendAttrs(desktopCat, attrIds);
+      await appendAttrs(laptopCat, attrIds.concat(laptopAttrIds));
+      await Promise.all([loadAttributes(), loadCategories()]);
+      // Seleccionar laptops para mostrar
+      try{ catSelect.value = laptopCat.id; await refreshCatAttrs(); }catch(e){}
+      alert('Atributos y categorías para PC/Laptop preparados.');
+    }
+    document.getElementById('seedComputersBtn')?.addEventListener('click', (e)=>{ e.preventDefault(); seedComputers().catch(err=>alert('No se pudo sembrar: '+(err?.message||err))); });
+  </script>
+</body>
+</html>

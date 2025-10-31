@@ -5,9 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Administración de Empleados</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
+        /* Estándar de botones responsivos */
+        .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+        .btn-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        @media (max-width: 640px){
+            .btn-text { display: none; }
+            .btn-icon { margin-right: 0 !important; }
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -31,7 +39,21 @@
         <div class="bg-white p-6 rounded-xl shadow-lg">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-semibold text-gray-700">Lista de Personal</h2>
-                <button id="show-employee-form-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition">+ Agregar Empleado</button>
+                <div class="btn-row">
+                    <div class="btn-group">
+                        <button id="emp-help-request-open" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center">
+                            <i class="fa fa-handshake-angle btn-icon mr-2"></i>
+                            <span class="btn-text">Solicitar ayuda</span>
+                        </button>
+                        <button id="show-employee-form-btn" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center">
+                            <i class="fa fa-user-plus btn-icon mr-2"></i>
+                            <span class="btn-text">Agregar Empleado</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <input id="employee-search-input" type="text" placeholder="Buscar por nombre..." class="w-full md:w-1/2 border rounded px-3 py-2" />
             </div>
             
             <form id="employee-form" class="mb-6 hidden bg-gray-50 p-4 rounded-lg border"></form>
@@ -39,11 +61,14 @@
             <div id="employees-list" class="space-y-3 min-h-[100px]">
                 <!-- La lista de empleados se cargará aquí -->
             </div>
+            <div id="employees-pagination" class="mt-3 flex items-center justify-end"></div>
         </div>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
 
     <script>
         const firebaseConfig = {
@@ -57,15 +82,28 @@
         };
 
         firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const employeesCollection = db.collection('employees');
+    const db = firebase.firestore();
+    const employeesCollection = db.collection('employees');
+    const helpRequestsCollection = db.collection('help_requests');
+    const storage = firebase.storage();
     </script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingOverlay = document.getElementById('loading-overlay');
         const employeesList = document.getElementById('employees-list');
         const showEmployeeFormBtn = document.getElementById('show-employee-form-btn');
         const employeeForm = document.getElementById('employee-form');
+    const employeeSearchInput = document.getElementById('employee-search-input');
+
+    // Estado de tabla
+    const EMP_PAGE_SIZE = 6;
+    let empPage = 1;
+    let empSearch = '';
+    let employeesCache = [];
+    let authUser = { uid: null, displayName: null, email: null };
+    try {
+        firebase.auth().onAuthStateChanged((u)=>{ if (u){ authUser = { uid: u.uid, displayName: u.displayName || null, email: u.email || null }; }});
+    } catch(e) { /* noop */ }
 
         const renderEmployeeForm = (employee = {}) => {
             const isEditing = !!employee.id;
@@ -82,9 +120,17 @@
                         <label for="employee-is-active" class="ml-2 block text-sm text-gray-900">Activo en el sistema</label>
                     </div>
                 </div>
-                <div class="mt-6 flex gap-3">
-                    <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg">${isEditing ? 'Guardar Cambios' : 'Crear Empleado'}</button>
-                    <button type="button" id="cancel-employee-form" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                <div class="mt-6 btn-row justify-end">
+                    <div class="btn-group">
+                        <button type="button" id="cancel-employee-form" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg flex items-center">
+                            <i class="fa fa-times btn-icon mr-2"></i>
+                            <span class="btn-text">Cancelar</span>
+                        </button>
+                        <button type="submit" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center">
+                            <i class="fa fa-save btn-icon mr-2"></i>
+                            <span class="btn-text">${isEditing ? 'Guardar Cambios' : 'Crear Empleado'}</span>
+                        </button>
+                    </div>
                 </div>
             `;
             employeeForm.querySelector('#cancel-employee-form').addEventListener('click', () => {
@@ -95,13 +141,36 @@
             showEmployeeFormBtn.classList.add('hidden');
         };
         
-        const renderEmployees = (employees) => {
+        const renderPagination = (containerId, current, total, count, pageSize) => {
+            const host = document.getElementById(containerId);
+            if (!host) return;
+            if (total <= 1){ host.innerHTML = ''; return; }
+            const btn = (label, page, disabled=false, active=false) => `<button data-page="${page}" class="px-2 py-1 rounded ${active? 'bg-cyan-600 text-white':'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${disabled? 'opacity-50 cursor-not-allowed':''}" ${disabled? 'disabled':''}>${label}</button>`;
+            let html = '<div class="w-full flex items-center justify-between text-sm">'
+                + `<div class="text-gray-500">${Math.min((current-1)*pageSize+1, count)}–${Math.min(current*pageSize, count)} de ${count}</div>`
+                + '<div class="flex items-center gap-1">'
+                + btn('«', 1, current===1) + btn('‹', current-1, current===1);
+            const windowSize=5, start=Math.max(1,current-Math.floor(windowSize/2)), end=Math.min(total,start+windowSize-1);
+            for(let p=start;p<=end;p++) html += btn(p,p,false,p===current);
+            html += btn('›', current+1, current===total) + btn('»', total, current===total) + '</div></div>';
+            host.innerHTML = html;
+            host.querySelectorAll('button[data-page]')?.forEach(b=> b.addEventListener('click', ()=>{ const p=parseInt(b.getAttribute('data-page'),10); if(!isNaN(p)){ empPage=p; renderEmployees(); }}));
+        };
+
+        const renderEmployees = () => {
+            const filtered = (employeesCache||[]).filter(emp => (emp.name||'').toLowerCase().includes(empSearch));
             employeesList.innerHTML = '';
-            if (employees.length === 0) {
+            if (filtered.length === 0) {
                 employeesList.innerHTML = `<p class="text-gray-500 text-center p-4">No hay empleados registrados.</p>`;
+                document.getElementById('employees-pagination').innerHTML = '';
                 return;
             }
-            employees.sort((a, b) => a.name.localeCompare(b.name)).forEach(emp => {
+            const sorted = filtered.sort((a, b) => (a.name||'').localeCompare(b.name||''));
+            const totalPages = Math.max(1, Math.ceil(sorted.length / EMP_PAGE_SIZE));
+            if (empPage > totalPages) empPage = totalPages;
+            const start = (empPage - 1) * EMP_PAGE_SIZE;
+            const pageItems = sorted.slice(start, start + EMP_PAGE_SIZE);
+            pageItems.forEach(emp => {
                 const el = document.createElement('div');
                 el.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
                 el.innerHTML = `
@@ -109,18 +178,24 @@
                         <p class="font-semibold text-gray-800">${emp.name}</p>
                         <span class="text-xs font-medium px-2 py-0.5 rounded ${emp.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${emp.is_active ? 'Activo' : 'Inactivo'}</span>
                     </div>
-                    <div class="flex gap-2 flex-shrink-0">
-                        <button data-id="${emp.id}" class="edit-employee-btn text-sm bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md">Editar</button>
-                        <button data-id="${emp.id}" data-active="${emp.is_active}" class="toggle-active-btn text-sm ${emp.is_active ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white font-semibold py-1 px-3 rounded-md">${emp.is_active ? 'Desactivar' : 'Activar'}</button>
+                    <div class="btn-group flex-shrink-0">
+                        <button data-id="${emp.id}" class="edit-employee-btn text-sm bg-gray-600 hover:bg-gray-700 text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa fa-pen btn-icon mr-2"></i><span class="btn-text">Editar</span>
+                        </button>
+                        <button data-id="${emp.id}" data-active="${emp.is_active}" class="toggle-active-btn text-sm ${emp.is_active ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-600 hover:bg-green-700'} text-white font-semibold py-1.5 px-3 rounded-md flex items-center">
+                            <i class="fa ${emp.is_active ? 'fa-user-slash' : 'fa-user-check'} btn-icon mr-2"></i>
+                            <span class="btn-text">${emp.is_active ? 'Desactivar' : 'Activar'}</span>
+                        </button>
                     </div>`;
                 employeesList.appendChild(el);
             });
+            renderPagination('employees-pagination', empPage, totalPages, sorted.length, EMP_PAGE_SIZE);
         };
 
         // --- LISTENERS ---
         employeesCollection.onSnapshot(snapshot => {
-            const employees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            renderEmployees(employees);
+            employeesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderEmployees();
             loadingOverlay.style.display = 'none';
         }, err => {
             console.error("Error fetching employees: ", err);
@@ -128,7 +203,8 @@
             alert("No se pudo conectar a la base de datos de empleados.");
         });
         
-        showEmployeeFormBtn.addEventListener('click', () => renderEmployeeForm());
+    showEmployeeFormBtn.addEventListener('click', () => renderEmployeeForm());
+    employeeSearchInput.addEventListener('input', (e)=>{ empSearch = (e.target.value||'').toLowerCase(); empPage = 1; renderEmployees(); });
         
         employeeForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -147,8 +223,83 @@
                     await employeesCollection.add(data);
                 }
                 employeeForm.classList.add('hidden');
+                // Abrir modal de solicitud de ayuda
+                const openEmpHelpModal = ()=>{
+                    const modal = document.getElementById('emp-help-request-modal');
+                    if (!modal) return;
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                };
+                const closeEmpHelpModal = ()=>{
+                    const modal = document.getElementById('emp-help-request-modal');
+                    if (!modal) return;
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                };
+                const submitEmpHelp = async ()=>{
+                    const descEl = document.getElementById('emp-help-description');
+                    const desc = (descEl?.value||'').trim();
+                    if (!desc){ alert('Describe tu solicitud.'); return; }
+                    const files = Array.from(document.getElementById('emp-help-files')?.files||[]);
+                    const prog = document.getElementById('emp-help-files-progress');
+                    const attachments = [];
+                    for (const f of files){
+                        try{
+                            if (prog) prog.textContent = `Subiendo ${f.name}...`;
+                            const safe = (f.name||'archivo').replace(/[^a-zA-Z0-9-_\.]/g,'_');
+                            const path = `help_requests/employees/general/${Date.now()}-${safe}`;
+                            const ref = storage.ref().child(path);
+                            await ref.put(f);
+                            const url = await ref.getDownloadURL();
+                            attachments.push({ url, name: f.name, contentType: f.type||null, size: f.size||null, addedAtMs: Date.now() });
+                        }catch(err){ console.error('Adjunto (empleados) fallo', err); alert('No se pudo subir un adjunto.'); }
+                    }
+                    if (prog) prog.textContent = '';
+                    const payload = {
+                        description: desc,
+                        scope: 'employees',
+                        scope_id: null,
+                        scope_name: null,
+                        status: 'Solicitado',
+                        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+                        created_by_uid: authUser.uid || null,
+                        requesting_employee_id: null,
+                        requesting_employee_name: authUser.displayName || authUser.email || 'Administrador',
+                        source: 'employees_admin_panel',
+                        attachments
+                    };
+                    try{
+                        await helpRequestsCollection.add(payload);
+                        closeEmpHelpModal();
+                        if (descEl) descEl.value = '';
+                        const fileIn = document.getElementById('emp-help-files'); if (fileIn) fileIn.value='';
+                        alert('Solicitud de ayuda enviada.');
+                    }catch(err){ console.error('Error enviando solicitud de ayuda (empleados)', err); alert('No se pudo enviar la solicitud.'); }
+                };
+                document.getElementById('emp-help-request-open').addEventListener('click', openEmpHelpModal);
+                document.getElementById('emp-help-cancel')?.addEventListener('click', closeEmpHelpModal);
+                document.getElementById('emp-help-submit')?.addEventListener('click', submitEmpHelp);
+
                 showEmployeeFormBtn.classList.remove('hidden');
             } catch (err) {
+            <!-- Modal Solicitar Ayuda (Empleados) -->
+            <div id="emp-help-request-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-50">
+                <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Solicitar ayuda</h2>
+                    <p class="text-gray-600 mb-3">Describe brevemente en qué necesitas ayuda dentro del panel de empleados.</p>
+                    <div class="text-sm text-gray-700 mb-2"><span class="font-medium">Ámbito:</span> Empleados</div>
+                    <textarea id="emp-help-description" rows="4" class="w-full border rounded-md p-3" placeholder="Ej: No puedo activar/desactivar un usuario..."></textarea>
+                    <div class="mt-3">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Adjuntos (imágenes o videos)</label>
+                        <input id="emp-help-files" type="file" multiple accept="image/*,video/*" class="block w-full text-sm" />
+                        <div id="emp-help-files-progress" class="mt-1 text-xs text-gray-500"></div>
+                    </div>
+                    <div class="mt-4 flex justify-end gap-2">
+                        <button id="emp-help-cancel" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancelar</button>
+                        <button id="emp-help-submit" class="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700">Enviar solicitud</button>
+                    </div>
+                </div>
+            </div>
                 console.error("Error saving employee: ", err);
                 alert('Error al guardar el empleado.');
             }

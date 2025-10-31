@@ -1,0 +1,1134 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import {
+  getAuth,
+  signInAnonymously,
+  onAuthStateChanged,
+  signInWithCustomToken // Importar signInWithCustomToken
+} from 'firebase/auth';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  addDoc,
+  updateDoc,
+  collection,
+  onSnapshot,
+  query,
+  writeBatch,
+  setLogLevel
+} from 'firebase/firestore';
+import {
+  Settings,
+  Plus,
+  Trash2,
+  Edit,
+  Save,
+  Search,
+  X,
+  GripVertical,
+  AlertCircle,
+  CheckCircle,
+  FilePlus,
+  Database
+} from 'lucide-react';
+
+// --- Firebase Configuration ---
+// These variables are globally provided in the environment.
+const firebaseConfig = typeof __firebase_config !== 'undefined'
+  ? JSON.parse(__firebase_config)
+  : { apiKey: "DEFAULT_API_KEY", authDomain: "DEFAULT_AUTH_DOMAIN", projectId: "DEFAULT_PROJECT_ID" };
+
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+setLogLevel('debug'); // Enable Firestore logging
+
+// --- Database Path Helper ---
+const colPrefix = `/artifacts/${appId}/public/data`;
+const itemsCol = collection(db, `${colPrefix}/items`);
+const categoriesCol = collection(db, `${colPrefix}/categories`);
+const metaModelsCol = collection(db, `${colPrefix}/metaModels`);
+const globalOptionsDoc = doc(db, `${colPrefix}/globalOptions`, 'warranty');
+
+// --- Main Application Component ---
+export default function App() {
+  // --- State Definitions ---
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [user, setUser] = useState(null);
+  const [role, setRole] = useState('Operario'); // 'Operario' or 'Admin'
+
+  // Data from DB
+  const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [metaModels, setMetaModels] = useState({}); // { categoryName: { attributes: [...] } }
+  const [globalOptions, setGlobalOptions] = useState({ timeOptions: [], coverageOptions: [] });
+
+  // UI State
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedMetaModel, setSelectedMetaModel] = useState(null); // The *attributes array* for the selected category
+  const [showMetaModal, setShowMetaModal] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(null); // 'timeOptions' or 'coverageOptions'
+  const [notification, setNotification] = useState(null); // { type, message }
+  const [isLoading, setIsLoading] = useState(true);
+
+  // --- Authentication Effect ---
+  useEffect(() => {
+    // 1. Set up the listener first.
+    // It just updates the user state whenever it changes.
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUser(user);
+        console.log("Auth state changed, user ID:", user.uid);
+      } else {
+        setUser(null);
+        console.log("Auth state changed, user is null.");
+      }
+      // NO setting isAuthReady here.
+    });
+
+    // 2. Define the sign-in function
+    const attemptSignIn = async () => {
+      try {
+        if (!auth.currentUser) { // Only attempt if no user
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+            console.log("Signed in with custom token.");
+          } else {
+            await signInAnonymously(auth);
+            console.log("Signed in anonymously.");
+          }
+        } else {
+          console.log("User already signed in.");
+          // If user is already signed in, we can set ready
+        }
+      } catch (error) {
+        console.error("Authentication failed:", error);
+      } finally {
+        // 3. Set ready *after* the attempt is finished (success or fail).
+        // This is the key change to prevent the race condition.
+        setIsAuthReady(true);
+        console.log("Auth process finished, setting isAuthReady to true.");
+      }
+    };
+
+    // 4. Trigger the sign-in
+    attemptSignIn();
+
+    // 5. Cleanup listener on unmount
+    return () => unsubscribe();
+  }, []); // El array vacío [] asegura que esto solo se ejecute una vez
+
+  // --- Data Loading Effect ---
+  useEffect(() => {
+    if (!isAuthReady) {
+      console.log("Auth not ready, skipping data load.");
+      return; // Wait until auth process is complete
+    }
+
+    console.log("Auth is ready, attaching listeners. Current user:", auth.currentUser?.uid || "none");
+    setIsLoading(true);
+    const listeners = [];
+
+    // Listener for Items
+    listeners.push(onSnapshot(itemsCol, (snapshot) => {
+      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setIsLoading(false);
+    }, (error) => console.error("Error fetching items:", error)));
+
+    // Listener for Categories
+    listeners.push(onSnapshot(categoriesCol, (snapshot) => {
+      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => console.error("Error fetching categories:", error)));
+
+    // Listener for Meta-Models
+    listeners.push(onSnapshot(metaModelsCol, (snapshot) => {
+      const models = {};
+      snapshot.docs.forEach(doc => {
+        models[doc.id] = doc.data(); // doc.id is the category name
+      });
+      setMetaModels(models);
+    }, (error) => console.error("Error fetching meta-models:", error)));
+
+    // Listener for Global Options
+    listeners.push(onSnapshot(globalOptionsDoc, (doc) => {
+      if (doc.exists()) {
+        setGlobalOptions(doc.data());
+      } else {
+        // Initialize if doesn't exist
+        setDoc(globalOptionsDoc, {
+          timeOptions: ['6m', '12m', '24m'],
+          coverageOptions: ['Partes y Piezas', 'Mano de Obra', 'Completa']
+        });
+      }
+    }, (error) => console.error("Error fetching global options:", error)));
+
+    // Cleanup listeners
+    return () => {
+      listeners.forEach(unsub => unsub());
+    };
+  }, [isAuthReady]); // This dependency is correct
+
+  // --- Utility Functions ---
+  const showNotification = (message, type = 'success', duration = 3000) => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), duration);
+  };
+
+  // --- Event Handlers ---
+  const handleSelectItem = (item) => {
+    setSelectedItem(item);
+    // Load the meta-model for the item's category
+    const meta = metaModels[item.category];
+    setSelectedMetaModel(meta ? meta.attributes : []);
+  };
+
+  const handleSaveDetails = async (formData) => {
+    if (!selectedItem) return;
+
+    // Separate core data from attributes
+    const { id, sku, description, ...otherCoreFields } = selectedItem;
+    const { category, ...attributesData } = formData;
+
+    try {
+      await updateDoc(doc(db, `${colPrefix}/items`, selectedItem.id), {
+        category: category,
+        attributes: attributesData
+      });
+      showNotification('¡Item guardado con éxito!');
+      // Reselect the item to ensure data consistency (optimistic update)
+      setSelectedItem(prev => ({ ...prev, category, attributes: attributesData }));
+    } catch (error) {
+      console.error("Error saving item:", error);
+      showNotification('Error al guardar el item.', 'error');
+    }
+  };
+
+  const handleCategoryBlur = async (categoryName) => {
+    if (!categoryName) {
+      setSelectedMetaModel([]);
+      return;
+    }
+
+    // 1. Load dynamic attributes for the category
+    const meta = metaModels[categoryName];
+    setSelectedMetaModel(meta ? meta.attributes : []);
+
+    // 2. Check if category exists
+    const categoryExists = categories.some(c => c.name.toLowerCase() === categoryName.toLowerCase());
+
+    if (!categoryExists) {
+      // 3. Create new category (as per spec)
+      try {
+        await addDoc(categoriesCol, {
+          name: categoryName,
+          status: 'pending_attributes',
+          createdAt: new Date()
+        });
+        showNotification(`Categoría "${categoryName}" creada. Pendiente de atributos.`, 'info');
+      } catch (error) {
+        console.error("Error creating category:", error);
+        showNotification('Error al crear la categoría.', 'error');
+      }
+    }
+  };
+
+  const handleSaveMetaModel = async (categoryName, attributes) => {
+    if (!categoryName || role !== 'Admin') return;
+
+    try {
+      // Using setDoc with doc.id as categoryName for easy lookup
+      await setDoc(doc(db, `${colPrefix}/metaModels`, categoryName), {
+        attributes: attributes
+      });
+      showNotification(`Meta-Modelo para "${categoryName}" guardado.`);
+      setShowMetaModal(false);
+      // Manually trigger re-load of dynamic fields if the edited category is selected
+      if (selectedItem && selectedItem.category === categoryName) {
+        setSelectedMetaModel(attributes);
+      }
+    } catch (error) {
+      console.error("Error saving meta-model:", error);
+      showNotification('Error al guardar el meta-modelo.', 'error');
+    }
+  };
+  
+  const handleSaveGlobalOptions = async (key, optionsArray) => {
+     try {
+      await updateDoc(globalOptionsDoc, {
+        [key]: optionsArray
+      });
+      showNotification('Opciones globales actualizadas.');
+      setShowOptionsMenu(null);
+    } catch (error) {
+      console.error("Error saving global options:", error);
+      showNotification('Error al guardar opciones.', 'error');
+    }
+  };
+
+  // --- Seed Data Function (for demo) ---
+  const seedData = async () => {
+    setIsLoading(true);
+    try {
+      const batch = writeBatch(db);
+
+      // 1. Global Options
+      batch.set(globalOptionsDoc, {
+        timeOptions: ['6 meses', '12 meses', '24 meses', 'Limitada (1 año)'],
+        coverageOptions: ['Partes y Piezas', 'Mano de Obra', 'Completa (In-Situ)']
+      });
+
+      // 2. Categories
+      batch.set(doc(categoriesCol, 'impresoras'), { name: 'Impresoras', status: 'active' });
+      batch.set(doc(categoriesCol, 'monitores'), { name: 'Monitores', status: 'active' });
+
+      // 3. Meta-Models
+      batch.set(doc(metaModelsCol, 'Impresoras'), {
+        attributes: [
+          { id: 't1', name: 'Tecnología', type: 'Selección Única', options: 'Láser,Tinta,Térmica', validation: 'Necesario', isConditional: false },
+          { id: 't2', name: 'Función', type: 'Selección Única', options: 'Solo Impresión,Multifuncional', validation: 'Necesario', isConditional: false },
+          { id: 't3', name: 'Tipo de Escáner', type: 'Texto Corto', validation: 'Opcional', isConditional: true, dependsOn: 'Función', showIfValue: 'Multifuncional' },
+          { id: 't4', name: 'Conectividad', type: 'Selección Múltiple (Checklist)', options: 'USB,WiFi,Ethernet,Bluetooth', validation: 'Opcional', isConditional: false },
+          { id: 't5', name: 'Doble Faz Automático', type: 'Booleano (Si/No)', validation: 'Opcional', isConditional: false },
+        ]
+      });
+      batch.set(doc(metaModelsCol, 'Monitores'), {
+        attributes: [
+          { id: 'm1', name: 'Tamaño (Pulgadas)', type: 'Número', validation: 'Necesario', isConditional: false },
+          { id: 'm2', name: 'Resolución', type: 'Selección Única', options: '1080p,1440p,4K', validation: 'Necesario', isConditional: false },
+          { id: 'm3', name: 'Tasa de Refresco (Hz)', type: 'Número', validation: 'Opcional', isConditional: false },
+          { id: 'm4', name: 'Curvo', type: 'Booleano (Si/No)', validation: 'Opcional', isConditional: false },
+        ]
+      });
+
+      // 4. Items
+      batch.set(doc(itemsCol, 'IMP-001'), {
+        sku: 'IMP-001',
+        description: 'Impresora Multifuncional Brother',
+        category: 'Impresoras',
+        attributes: {
+          appliesWarranty: true,
+          warrantyTime: '12 meses',
+          warrantyCoverage: 'Completa (In-Situ)',
+          warrantyConditions: 'Solo fallas de fábrica.',
+          'Tecnología': 'Láser',
+          'Función': 'Multifuncional',
+          'Tipo de Escáner': 'Plano (ADF)',
+          'Conectividad': ['WiFi', 'Ethernet'],
+          'Doble Faz Automático': true
+        }
+      });
+      batch.set(doc(itemsCol, 'MON-001'), {
+        sku: 'MON-001',
+        description: 'Monitor Curvo Samsung 27"',
+        category: 'Monitores',
+        attributes: {
+          appliesWarranty: true,
+          warrantyTime: '24 meses',
+          warrantyCoverage: 'Partes y Piezas',
+          warrantyConditions: '',
+          'Tamaño (Pulgadas)': 27,
+          'Resolución': '1440p',
+          'Tasa de Refresco (Hz)': 144,
+          'Curvo': true
+        }
+      });
+       batch.set(doc(itemsCol, 'IMP-002'), {
+        sku: 'IMP-002',
+        description: 'Impresora Epson EcoTank',
+        category: 'Impresoras',
+        attributes: {
+          appliesWarranty: false,
+          'Tecnología': 'Tinta',
+          'Función': 'Solo Impresión',
+          'Conectividad': ['USB', 'WiFi'],
+          'Doble Faz Automático': false
+        }
+      });
+
+      await batch.commit();
+      showNotification('¡Datos de demostración cargados!');
+    } catch (error) {
+      console.error("Error seeding data:", error);
+      showNotification('Error al cargar datos de demo.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- Render ---
+  if (!isAuthReady) {
+    return <LoadingSpinner text="Autenticando..." />;
+  }
+  
+  const currentCategoryName = selectedItem?.category || (showMetaModal ? document.getElementById('category-input')?.value : null);
+
+  return (
+    <div className="flex flex-col h-screen bg-gray-100 font-sans">
+      {/* --- Notification --- */}
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={() => setNotification(null)}
+        />
+      )}
+
+      {/* --- Header & Role Toggle --- */}
+      <header className="bg-white shadow-md p-3 flex justify-between items-center z-10">
+        <h1 className="text-xl font-bold text-gray-800">Gestión de Categorías y Atributos (v1.4)</h1>
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={seedData}
+            className="flex items-center bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow"
+            title="Cargar datos de demostración"
+          >
+            <Database size={16} className="mr-2" />
+            Cargar Demo
+          </button>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm font-medium text-gray-600">Rol Actual:</span>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="rounded-lg border border-gray-300 px-2 py-1 text-sm shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="Operario">Operario</option>
+              <option value="Admin">Admin</option>
+            </select>
+          </div>
+        </div>
+      </header>
+
+      {/* --- Main Content (Master-Detail) --- */}
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-4 p-4 overflow-hidden">
+        {/* --- Master Panel --- */}
+        <MasterPanel
+          items={items}
+          onSelectItem={handleSelectItem}
+          selectedItemId={selectedItem?.id}
+          isLoading={isLoading}
+        />
+
+        {/* --- Detail Panel --- */}
+        <DetailPanel
+          key={selectedItem?.id} // Force re-render on item change
+          selectedItem={selectedItem}
+          role={role}
+          categories={categories} // <-- AÑADIDO: Pasar 'categories' como prop
+          metaModel={selectedMetaModel}
+          globalOptions={globalOptions}
+          onSave={handleSaveDetails}
+          onCategoryBlur={handleCategoryBlur}
+          onOpenMetaModal={() => setShowMetaModal(true)}
+          onOpenOptionsModal={setShowOptionsMenu}
+        />
+      </main>
+
+      {/* --- Modals --- */}
+      {showMetaModal && role === 'Admin' && (
+        <MetaModelModal
+          show={showMetaModal}
+          onClose={() => setShowMetaModal(false)}
+          categoryName={currentCategoryName}
+          initialMetaModel={metaModels[currentCategoryName] || { attributes: [] }}
+          onSave={handleSaveMetaModel}
+        />
+      )}
+      
+      {showOptionsMenu && role === 'Admin' && (
+        <AdminOptionsModal
+          show={!!showOptionsMenu}
+          onClose={() => setShowOptionsMenu(null)}
+          optionsKey={showOptionsMenu}
+          initialOptions={globalOptions[showOptionsMenu] || []}
+          onSave={handleSaveGlobalOptions}
+        />
+      )}
+    </div>
+  );
+}
+
+// --- Child Components ---
+
+function MasterPanel({ items, onSelectItem, selectedItemId, isLoading }) {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredItems = useMemo(() => {
+    return items.filter(item =>
+      item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.category.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [items, searchTerm]);
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg flex flex-col overflow-hidden md:col-span-1 xl:col-span-1">
+      <div className="p-4 border-b">
+        <h2 className="text-lg font-semibold mb-3">Buscador de Items</h2>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Buscar por SKU, Descripción, Categoría..."
+            className="w-full pl-10 pr-4 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <LoadingSpinner text="Cargando items..." />
+        ) : (
+          <ul className="divide-y divide-gray-200">
+            {filteredItems.length > 0 ? filteredItems.map(item => (
+              <li key={item.id}>
+                <button
+                  onClick={() => onSelectItem(item)}
+                  className={`w-full text-left p-4 ${selectedItemId === item.id ? 'bg-blue-100' : 'hover:bg-gray-50'
+                    }`}
+                >
+                  <p className="font-medium text-gray-900">{item.description}</p>
+                  <p className="text-sm text-gray-500">{item.sku} - <span className="font-medium text-blue-600">{item.category}</span></p>
+                </button>
+              </li>
+            )) : (
+              <p className="p-4 text-gray-500">No se encontraron items.</p>
+            )}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailPanel({
+  selectedItem,
+  role,
+  categories, // <-- AÑADIDO: Recibir 'categories' como prop
+  metaModel,
+  globalOptions,
+  onSave,
+  onCategoryBlur,
+  onOpenMetaModal,
+  onOpenOptionsModal
+}) {
+  const [formData, setFormData] = useState({});
+  const [showWarranty, setShowWarranty] = useState(false);
+
+  // Load item data into form state when item changes
+  useEffect(() => {
+    if (selectedItem) {
+      const initialData = {
+        ...selectedItem.attributes,
+        category: selectedItem.category,
+      };
+      setFormData(initialData);
+      setShowWarranty(!!initialData.appliesWarranty);
+    } else {
+      setFormData({}); // Clear form if no item is selected
+    }
+  }, [selectedItem]);
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    
+    if (type === 'checkbox') {
+      // Special handling for boolean checkbox
+      if (name === 'appliesWarranty') setShowWarranty(checked);
+      setFormData(prev => ({ ...prev, [name]: checked }));
+    } else if (e.target.multiple) {
+       // Special handling for multi-select (for checklist simulation)
+       const options = Array.from(e.target.selectedOptions, option => option.value);
+       setFormData(prev => ({ ...prev, [name]: options }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+  };
+  
+  // Special handler for dynamic checklist (when implemented as true checkboxes)
+  // This handler is for the 'Selección Múltiple (Checklist)' type
+  const handleChecklistChange = (e) => {
+    const { name, value, checked } = e.target;
+    const currentValues = formData[name] || [];
+    let newValues;
+    if (checked) {
+      newValues = [...currentValues, value];
+    } else {
+      newValues = currentValues.filter(v => v !== value);
+    }
+    setFormData(prev => ({ ...prev, [name]: newValues }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(formData);
+  };
+
+  if (!selectedItem) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-6 md:col-span-2 xl:col-span-3 flex items-center justify-center">
+        <p className="text-gray-500 text-lg">Seleccione un item de la lista para ver sus detalles.</p>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-lg md:col-span-2 xl:col-span-3 flex flex-col overflow-hidden">
+      <div className="p-4 border-b flex justify-between items-center">
+        <h2 className="text-lg font-semibold">
+          Detalle del Item: <span className="text-blue-600">{selectedItem.sku}</span>
+        </h2>
+        <button
+          type="submit"
+          className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow"
+        >
+          <Save size={18} className="mr-2" />
+          Guardar Cambios
+        </button>
+      </div>
+
+      <div className="flex-1 p-4 overflow-y-auto space-y-6">
+        {/* --- Sección 2.1: Atributos Globales (Garantía) --- */}
+        <div className="border rounded-lg p-4">
+          <h3 className="text-md font-semibold mb-3 text-gray-700">Atributos Globales (Garantía)</h3>
+          <div className="space-y-4">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="appliesWarranty"
+                name="appliesWarranty"
+                checked={formData.appliesWarranty || false}
+                onChange={handleChange}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="appliesWarranty" className="ml-2 block text-sm font-medium text-gray-900">
+                ¿Aplica Garantía? <span className="text-red-600 font-bold">(Obligatorio)</span>
+              </label>
+            </div>
+
+            {/* Grupo Condicional (Si ¿Aplica Garantía? = Si) */}
+            <div className={`pl-6 space-y-4 transition-all duration-300 ${showWarranty ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+              <FormRow
+                label="Tiempo de Garantía"
+                validation="Necesario, Condicional"
+                isAdmin={role === 'Admin'}
+                onAdminClick={() => onOpenOptionsModal('timeOptions')}
+              >
+                <select
+                  id="warrantyTime"
+                  name="warrantyTime"
+                  value={formData.warrantyTime || ''}
+                  onChange={handleChange}
+                  className="w-full border rounded-lg px-3 py-2 shadow-sm"
+                >
+                  <option value="">Seleccione...</option>
+                  {globalOptions.timeOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </FormRow>
+
+              <FormRow
+                label="Cobertura"
+                validation="Necesario, Condicional"
+                isAdmin={role === 'Admin'}
+                onAdminClick={() => onOpenOptionsModal('coverageOptions')}
+              >
+                <select
+                  id="warrantyCoverage"
+                  name="warrantyCoverage"
+                  value={formData.warrantyCoverage || ''}
+                  onChange={handleChange}
+                  className="w-full border rounded-lg px-3 py-2 shadow-sm"
+                >
+                  <option value="">Seleccione...</option>
+                  {globalOptions.coverageOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </FormRow>
+              
+              <FormRow
+                label="Condiciones"
+                validation="Opcional, Condicional"
+                isAdmin={role === 'Admin'}
+                onAdminClick={() => alert('Gestión de visibilidad de condiciones (demo).')}
+              >
+                <textarea
+                  id="warrantyConditions"
+                  name="warrantyConditions"
+                  rows="3"
+                  value={formData.warrantyConditions || ''}
+                  onChange={handleChange}
+                  className="w-full border rounded-lg px-3 py-2 shadow-sm"
+                />
+              </FormRow>
+            </div>
+          </div>
+        </div>
+
+        {/* --- Sección 2.2: Atributos Específicos (NÚCLEO) --- */}
+        <div className="border rounded-lg p-4">
+          <h3 className="text-md font-semibold mb-3 text-gray-700">Atributos Específicos (NÚCLEO)</h3>
+          <div className="space-y-4">
+            <FormRow
+              label="Categoría"
+              validation="Necesario"
+              isAdmin={role === 'Admin'}
+              adminButtonTitle="Gestionar Atributos de Categoría"
+              onAdminClick={() => formData.category && onOpenMetaModal()}
+              adminButtonDisabled={!formData.category}
+            >
+              {/* ComboBox Creativo */}
+              <input
+                type="text"
+                id="category-input"
+                name="category"
+                list="category-list"
+                value={formData.category || ''}
+                onChange={handleChange}
+                onBlur={(e) => onCategoryBlur(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 shadow-sm"
+              />
+              <datalist id="category-list">
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.name} />
+                ))}
+              </datalist>
+            </FormRow>
+
+            {/* --- Área de Atributos Dinámicos --- */}
+            <div id="dynamicAttributesContainer" className="pl-6 space-y-4 border-l-2 border-blue-100 ml-4">
+              {metaModel && metaModel.length > 0 ? (
+                metaModel.map(attr => (
+                  <DynamicField
+                    key={attr.id}
+                    attr={attr}
+                    formData={formData}
+                    handleChange={handleChange}
+                    handleChecklistChange={handleChecklistChange}
+                  />
+                ))
+              ) : (
+                <p className="text-gray-500 text-sm p-4">No hay atributos dinámicos definidos para esta categoría.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function FormRow({ label, validation, isAdmin, onAdminClick, adminButtonTitle, adminButtonDisabled = false, children }) {
+  const validationColors = {
+    'Opcional': 'text-gray-500',
+    'Necesario': 'text-orange-500 font-medium',
+    'Obligatorio': 'text-red-600 font-bold',
+  };
+  const validationText = validation.split(',')[0];
+  const colorClass = validationColors[validationText] || 'text-gray-500';
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label} <span className={colorClass}>({validation})</span>
+      </label>
+      <div className="flex items-center space-x-2">
+        <div className="flex-1">
+          {children}
+        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            title={adminButtonTitle || `Gestionar opciones de ${label}`}
+            onClick={onAdminClick}
+            disabled={adminButtonDisabled}
+            className="p-2 text-gray-500 hover:text-blue-600 disabled:text-gray-300 disabled:cursor-not-allowed"
+          >
+            <Settings size={18} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DynamicField({ attr, formData, handleChange, handleChecklistChange }) {
+  // Lógica Condicional
+  if (attr.isConditional) {
+    const controllingValue = formData[attr.dependsOn];
+    if (controllingValue !== attr.showIfValue) {
+      return null; // No renderizar este campo
+    }
+  }
+
+  // Lógica de Validación (visual)
+  const validation = attr.validation || 'Opcional';
+  const isInvalid = (validation === 'Necesario' || validation === 'Obligatorio') && !formData[attr.name];
+  const validationClass = isInvalid
+    ? (validation === 'Necesario' ? 'border-orange-500' : 'border-red-600')
+    : 'border-gray-300';
+
+  const commonProps = {
+    id: attr.name,
+    name: attr.name,
+    className: `w-full border rounded-lg px-3 py-2 shadow-sm focus:ring-blue-500 ${validationClass}`,
+  };
+
+  let field;
+
+  switch (attr.type) {
+    case 'Texto Corto':
+      field = <input
+        type="text"
+        {...commonProps}
+        value={formData[attr.name] || ''}
+        onChange={handleChange}
+      />;
+      break;
+    case 'Número':
+      field = <input
+        type="number"
+        {...commonProps}
+        value={formData[attr.name] || ''}
+        onChange={handleChange}
+      />;
+      break;
+    case 'Booleano (Si/No)':
+      field = <div className="pt-2">
+        <input
+          type="checkbox"
+          id={attr.name}
+          name={attr.name}
+          checked={formData[attr.name] || false}
+          onChange={handleChange}
+          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+        />
+      </div>;
+      break;
+    case 'Selección Única':
+      field = <select
+        {...commonProps}
+        value={formData[attr.name] || ''}
+        onChange={handleChange}
+      >
+        <option value="">Seleccione...</option>
+        {attr.options?.split(',').map(opt => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>;
+      break;
+    case 'Selección Múltiple (Checklist)':
+      // Render as a div of checkboxes
+      field = <div {...commonProps} className="p-2 space-y-1">
+        {attr.options?.split(',').map(opt => (
+          <div key={opt} className="flex items-center">
+            <input
+              type="checkbox"
+              id={`${attr.name}-${opt}`}
+              name={attr.name}
+              value={opt}
+              checked={formData[attr.name]?.includes(opt) || false}
+              onChange={handleChecklistChange}
+              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <label htmlFor={`${attr.name}-${opt}`} className="ml-2 text-sm text-gray-700">{opt}</label>
+          </div>
+        ))}
+      </div>;
+      break;
+    default:
+      field = <p className="text-red-500">Tipo de campo desconocido: {attr.type}</p>;
+  }
+
+  return (
+    <FormRow label={attr.name} validation={attr.validation}>
+      {field}
+    </FormRow>
+  );
+}
+
+// --- Modals ---
+
+function Modal({ title, show, onClose, children }) {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh]">
+        <header className="p-4 border-b flex justify-between items-center">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={24} />
+          </button>
+        </header>
+        <div className="flex-1 p-6 overflow-y-auto space-y-4">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetaModelModal({ show, onClose, categoryName, initialMetaModel, onSave }) {
+  const [attributes, setAttributes] = useState(initialMetaModel.attributes || []);
+  const [editingAttr, setEditingAttr] = useState(null); // null for new, or attr object for editing
+
+  // Reset form when editingAttr changes
+  const [formState, setFormState] = useState({
+    name: '',
+    type: 'Texto Corto',
+    options: '',
+    validation: 'Opcional',
+    isConditional: false,
+    dependsOn: '',
+    showIfValue: ''
+  });
+
+  useEffect(() => {
+    setAttributes(initialMetaModel.attributes || []);
+  }, [initialMetaModel]);
+
+  useEffect(() => {
+    if (editingAttr) {
+      setFormState({
+        id: editingAttr.id,
+        name: editingAttr.name || '',
+        type: editingAttr.type || 'Texto Corto',
+        options: editingAttr.options || '',
+        validation: editingAttr.validation || 'Opcional',
+        isConditional: editingAttr.isConditional || false,
+        dependsOn: editingAttr.dependsOn || '',
+        showIfValue: editingAttr.showIfValue || ''
+      });
+    } else {
+      // Reset to default for "new"
+      setFormState({
+        name: '', type: 'Texto Corto', options: '', validation: 'Opcional',
+        isConditional: false, dependsOn: '', showIfValue: ''
+      });
+    }
+  }, [editingAttr]);
+  
+  const handleFormChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormState(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSaveAttribute = () => {
+    if (!formState.name) {
+      alert('El nombre del atributo es obligatorio.');
+      return;
+    }
+    
+    const attrToSave = { ...formState };
+    let newAttributes;
+
+    if (attrToSave.id) {
+      // Update existing
+      newAttributes = attributes.map(attr => attr.id === attrToSave.id ? attrToSave : attr);
+    } else {
+      // Add new
+      attrToSave.id = `temp_${Date.now()}`; // Assign temporary ID
+      newAttributes = [...attributes, attrToSave];
+    }
+    setAttributes(newAttributes);
+    setEditingAttr(null); // Reset form
+  };
+
+  const handleDeleteAttribute = (id) => {
+    if (window.confirm('¿Está seguro de que desea eliminar este atributo?')) {
+      setAttributes(prev => prev.filter(attr => attr.id !== id));
+    }
+  };
+
+  const handleSaveToDB = () => {
+    onSave(categoryName, attributes);
+  };
+  
+  const otherAttributes = attributes.filter(a => a.id !== editingAttr?.id).map(a => a.name);
+
+  return (
+    <Modal title={`Gestionar Atributos de Categoría: ${categoryName}`} show={show} onClose={onClose}>
+      {/* --- Lista de Atributos Existentes --- */}
+      <div className="border rounded-lg p-3">
+        <h4 className="font-semibold mb-2">Atributos Actuales</h4>
+        <div className="max-h-60 overflow-y-auto space-y-2">
+          {attributes.length > 0 ? attributes.map(attr => (
+            <div key={attr.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+              <div className="flex items-center">
+                 <GripVertical size={16} className="text-gray-400 cursor-move mr-2" />
+                 <span className="font-medium">{attr.name}</span>
+                 <span className="text-sm text-gray-500 ml-2">({attr.type})</span>
+              </div>
+              <div className="space-x-2">
+                <button onClick={() => setEditingAttr(attr)} className="text-blue-600 hover:text-blue-800"><Edit size={16} /></button>
+                <button onClick={() => handleDeleteAttribute(attr.id)} className="text-red-600 hover:text-red-800"><Trash2 size={16} /></button>
+              </div>
+            </div>
+          )) : (
+            <p className="text-gray-500 text-sm">No hay atributos definidos.</p>
+          )}
+        </div>
+      </div>
+
+      {/* --- Formulario de Añadir/Modificar Atributo --- */}
+      <div className="border rounded-lg p-4 bg-gray-50">
+        <h4 className="font-semibold mb-3">{editingAttr ? 'Modificar Atributo' : 'Añadir Nuevo Atributo'}</h4>
+        <div className="grid grid-cols-2 gap-4">
+          <ModalInput label="Nombre del Atributo" name="name" value={formState.name} onChange={handleFormChange} />
+          <ModalInput label="Tipo de Campo" name="type" value={formState.type} onChange={handleFormChange} is="select">
+            <option>Texto Corto</option>
+            <option>Número</option>
+            <option>Selección Única</option>
+            <option>Selección Múltiple (Checklist)</option>
+            <option>Booleano (Si/No)</option>
+          </ModalInput>
+
+          {(formState.type === 'Selección Única' || formState.type === 'Selección Múltiple (Checklist)') && (
+            <ModalInput label="Opciones (separadas por coma)" name="options" value={formState.options} onChange={handleFormChange} is="textarea" className="col-span-2" />
+          )}
+
+          <ModalInput label="Reglas de Validación" name="validation" value={formState.validation} onChange={handleFormChange} is="select">
+            <option>Opcional</option>
+            <option>Necesario</option>
+            <option>Obligatorio</option>
+          </ModalInput>
+          
+          <div className="flex items-center pt-6">
+            <input type="checkbox" id="isConditional" name="isConditional" checked={formState.isConditional} onChange={handleFormChange} className="h-4 w-4" />
+            <label htmlFor="isConditional" className="ml-2 text-sm font-medium">¿Es un atributo condicional?</label>
+          </div>
+
+          {formState.isConditional && (
+            <>
+              <ModalInput label="Depende de:" name="dependsOn" value={formState.dependsOn} onChange={handleFormChange} is="select">
+                <option value="">Seleccione atributo...</option>
+                {otherAttributes.map(name => <option key={name} value={name}>{name}</option>)}
+              </ModalInput>
+              <ModalInput label="Mostrar si valor es:" name="showIfValue" value={formState.showIfValue} onChange={handleFormChange} />
+            </>
+          )}
+
+        </div>
+        <div className="text-right mt-4">
+          <button
+            onClick={handleSaveAttribute}
+            className="flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium shadow"
+          >
+            <Plus size={18} className="mr-2" />
+            {editingAttr ? 'Actualizar Atributo' : 'Añadir Atributo'}
+          </button>
+        </div>
+      </div>
+      
+      {/* --- Footer del Modal --- */}
+      <footer className="p-4 bg-gray-100 border-t text-right">
+        <button
+          onClick={handleSaveToDB}
+          className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow"
+        >
+          <Save size={18} className="mr-2" />
+          Guardar Meta-Modelo y Cerrar
+        </button>
+      </footer>
+    </Modal>
+  );
+}
+
+function ModalInput({ label, name, value, onChange, is = 'input', type = 'text', className = '', children, ...props }) {
+  const commonClasses = "w-full border rounded-lg px-3 py-2 shadow-sm bg-white";
+  let InputComponent;
+
+  if (is === 'select') {
+    InputComponent = (
+      <select name={name} value={value} onChange={onChange} className={commonClasses} {...props}>
+        {children}
+      </select>
+    );
+  } else if (is === 'textarea') {
+    InputComponent = (
+      <textarea name={name} value={value} onChange={onChange} className={commonClasses} {...props} />
+    );
+  } else {
+    InputComponent = (
+      <input type={type} name={name} value={value} onChange={onChange} className={commonClasses} {...props} />
+    );
+  }
+
+  return (
+    <div className={className}>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      {InputComponent}
+    </div>
+  );
+}
+
+function AdminOptionsModal({ show, onClose, optionsKey, initialOptions, onSave }) {
+  const [options, setOptions] = useState(initialOptions.join('\n'));
+
+  const title = optionsKey === 'timeOptions' ? 'Gestionar Tiempos de Garantía' : 'Gestionar Coberturas de Garantía';
+  
+  const handleSave = () => {
+    const optionsArray = options.split('\n').filter(opt => opt.trim() !== '');
+    onSave(optionsKey, optionsArray);
+  };
+
+  return (
+    <Modal title={title} show={show} onClose={onClose}>
+      <p className="text-sm text-gray-600">Escriba cada opción en una nueva línea.</p>
+      <textarea
+        value={options}
+        onChange={(e) => setOptions(e.target.value)}
+        rows="6"
+        className="w-full border rounded-lg p-2 font-mono"
+      />
+      <footer className="p-4 bg-gray-100 border-t text-right">
+        <button
+          onClick={handleSave}
+          className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow"
+        >
+          <Save size={18} className="mr-2" />
+          Guardar Opciones
+        </button>
+      </footer>
+    </Modal>
+  );
+}
+
+function Notification({ message, type, onClose }) {
+  const isError = type === 'error';
+  return (
+    <div className={`fixed top-5 right-5 z-50 p-4 rounded-lg shadow-lg flex items-center ${isError ? 'bg-red-600' : 'bg-green-600'} text-white`}>
+      {isError ? <AlertCircle className="mr-3" /> : <CheckCircle className="mr-3" />}
+      <span>{message}</span>
+      <button onClick={onClose} className="ml-4 text-white font-bold">
+        <X size={20} />
+      </button>
+    </div>
+  );
+}
+
+function LoadingSpinner({ text }) {
+  return (
+    <div className="flex flex-col items-center justify-center p-10 text-gray-500">
+      <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span className="mt-3 text-sm font-medium">{text || 'Cargando...'}</span>
+    </div>
+  );
+}
+
+
