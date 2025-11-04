@@ -1,13 +1,23 @@
 {
   "hosting": {
+    "site": "sistema-productividad-equipo",
     "public": ".",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
+    "redirects": [
+      { "source": "/index.html", "destination": "/esqueleto.html", "type": 301 }
+    ],
     "rewrites": [
       { "source": "/", "destination": "/esqueleto.html" }
     ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }

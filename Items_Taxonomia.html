@@ -13,6 +13,10 @@
     .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     .btn-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
     @media (max-width: 640px){ .btn-text { display: none; } .btn-icon { margin-right: 0 !important; } }
+    /* Contener controles (como manijas de arrastre o botones) dentro del rectángulo blanco */
+    #catAttrs > div { position: relative; overflow: hidden; }
+    #catAttrs > div > div:last-child { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    #catAttrs .cursor-move, #catAttrs .fa-grip-vertical { position: relative; z-index: 1; }
   </style>
 </head>
 <body class="bg-gray-50">
@@ -166,21 +170,21 @@
 
     let optState = [];
 
-    attrType.addEventListener('change', ()=>{
+    attrType?.addEventListener('change', ()=>{
       const t = attrType.value;
       optionsBox.classList.toggle('hidden', t !== 'select');
       attrMultiple.parentElement.classList.toggle('hidden', t !== 'select');
     });
-    addOptBtn.addEventListener('click', ()=>{
+    addOptBtn?.addEventListener('click', ()=>{
       const label = (optLabel.value||'').trim(); const value = (optValue.value||'').trim(); if (!label || !value) return;
       optState.push({ label, value }); optLabel.value=''; optValue.value=''; renderOptList();
     });
     function renderOptList(){
       optList.innerHTML = optState.map((o,i)=>`<li class="flex items-center justify-between border rounded px-2 py-1 text-sm"><span>${o.label} <span class="text-gray-500">(${o.value})</span></span><button type="button" class="px-2 py-1 bg-red-500 text-white rounded" data-del="${i}"><i class="fa fa-trash"></i></button></li>`).join('');
     }
-    optList.addEventListener('click', (e)=>{ const btn = e.target.closest('button[data-del]'); if (!btn) return; const i = parseInt(btn.dataset.del,10); if (!isNaN(i)){ optState.splice(i,1); renderOptList(); } });
+  optList?.addEventListener('click', (e)=>{ const btn = e.target.closest('button[data-del]'); if (!btn) return; const i = parseInt(btn.dataset.del,10); if (!isNaN(i)){ optState.splice(i,1); renderOptList(); } });
 
-    attrForm.addEventListener('submit', async (e)=>{
+    attrForm?.addEventListener('submit', async (e)=>{
       e.preventDefault(); if (!db) return;
       const name = (attrName.value||'').trim(); const code = (attrCode.value||'').trim(); const type = attrType.value;
       if (!name) return alert('Nombre requerido');
@@ -200,7 +204,7 @@
       }).join('');
     }
 
-    attrTable.addEventListener('click', async (e)=>{
+    attrTable?.addEventListener('click', async (e)=>{
       const row = e.target.closest('tr[data-id]'); if (!row) return;
       const id = row.dataset.id;
       if (e.target.closest('.del-attr')){ if (confirm('¿Eliminar atributo?')){ await invAttrCol.doc(id).delete(); await Promise.all([loadAttributes(), loadAddableAttrsForCat(), refreshCatAttrs()]); } return; }
@@ -212,7 +216,7 @@
       }
     });
 
-    catForm.addEventListener('submit', async (e)=>{
+    catForm?.addEventListener('submit', async (e)=>{
       e.preventDefault(); if (!db) return;
       const name = (catName.value||'').trim(); const code = (catCode.value||'').trim(); const description = (catDesc.value||'').trim();
       if (!name) return alert('Nombre requerido');
@@ -262,7 +266,7 @@
       }).join('');
     }
 
-    addAttrToCat.addEventListener('change', async ()=>{
+    addAttrToCat?.addEventListener('change', async ()=>{
       const attrId = addAttrToCat.value; if (!attrId) return;
       const catId = catSelect.value; if (!catId) return;
       const doc = await invCatCol.doc(catId).get(); const c = doc.data() || { attributes: [] };
@@ -270,8 +274,8 @@
       if (!arr.find(a=>a.attribute_id===attrId)) arr.push({ attribute_id: attrId, required: false, visible: true, order: (arr.length? Math.max(...arr.map(a=>a.order||0))+1 : 1) });
       await invCatCol.doc(catId).update({ attributes: arr }); addAttrToCat.value=''; await refreshCatAttrs();
     });
-    catSelect.addEventListener('change', ()=>{ refreshCatAttrs(); window.parent?.postMessage({ type:'taxonomyFocus', path: 'Categorías/'+(catSelect.options[catSelect.selectedIndex]?.text||'') }, '*'); });
-    catAttrs.addEventListener('click', async (e)=>{
+    catSelect?.addEventListener('change', ()=>{ refreshCatAttrs(); window.parent?.postMessage({ type:'taxonomyFocus', path: 'Categorías/'+(catSelect.options[catSelect.selectedIndex]?.text||'') }, '*'); });
+    catAttrs?.addEventListener('click', async (e)=>{
       const row = e.target.closest('[data-attr]'); if (!row) return; const attrId = row.getAttribute('data-attr'); const catId = catSelect.value;
       const doc = await invCatCol.doc(catId).get(); const c = doc.data() || { attributes: [] }; const arr = Array.isArray(c.attributes)? c.attributes: [];
       const idx = arr.findIndex(a=>a.attribute_id===attrId); if (idx<0) return;
@@ -303,7 +307,7 @@
     }
 
     async function loadAll(){ await Promise.all([loadAttributes(), loadCategories()]); }
-    seedBtn.addEventListener('click', seedExamples);
+  seedBtn?.addEventListener('click', seedExamples);
     // --- Siembra de atributos para PC/Laptop ---
     async function upsertAttrByCode(code, doc){
       const q = await invAttrCol.where('code','==',code).limit(1).get();

@@ -263,6 +263,13 @@
             return deviceId;
         }
 
+        // Fallback silencioso: si subscribeActiveSession no está definido en el host, definir no-op
+        try {
+            if (typeof window.subscribeActiveSession !== 'function') {
+                window.subscribeActiveSession = function(){ return function(){}; };
+            }
+        } catch(_) {}
+
     let allUsers = [], allRoles = [], allPermissions = [], rolePermissionsMap = {}, currentUser = null, currentRoleIdForPermissions = null;
     const PAGE_SIZE = 6;
     let userFilter = '', userPage = 1;

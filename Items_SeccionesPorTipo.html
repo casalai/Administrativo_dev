@@ -1,0 +1,1984 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secciones y Campos por Tipo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    .grid-table { display: grid; grid-template-columns: 1.5fr 0.9fr 0.7fr 0.9fr 0.9fr 1.0fr; }
+    .grid-table > div { padding: 0.5rem 0.5rem; border-bottom: 1px solid #e5e7eb; }
+    .grid-table .head { font-weight: 600; color: #4b5563; background: #f9fafb; border-top: 1px solid #e5e7eb; }
+    .badge { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 9999px; }
+    /* Resaltado temporal para grupo padre + hijos tras mover */
+    .ve-flash { animation: veFlash 1.2s ease-out; }
+    @keyframes veFlash {
+      0% { background-color: #fef3c7; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25) inset; }
+      100% { background-color: transparent; box-shadow: none; }
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div class="max-w-7xl mx-auto p-4">
+    <header class="mb-4 flex items-start justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-800">Secciones y Campos por Tipo</h1>
+        <p class="text-sm text-gray-600 mt-1">Administre qué secciones aparecen por tipo (producto, servicio, combo) y defina visibilidad/obligatoriedad por campo. Cambios se guardan en Firestore y aplican a toda la organización.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="btnNewSection" class="px-3 py-2 rounded bg-blue-600 text-white text-sm"><i class="fa fa-plus mr-1"></i>Nueva sección</button>
+        <button id="btnManageSections" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm"><i class="fa fa-folder-tree mr-1"></i>Gestionar secciones</button>
+      </div>
+    </header>
+
+    <!-- Editor visual de secciones y campos (PRIMERO) -->
+    <section class="bg-white border rounded-xl p-4 mb-4">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <h2 class="text-lg font-semibold">Editor visual (Tipos → Secciones → Campos)</h2>
+        <div class="flex items-center gap-2">
+          <div class="text-xs text-gray-500">Arrastra para reordenar secciones o campos. Cambios se guardan automáticamente.</div>
+        </div>
+      </div>
+      <div class="text-[11px] text-gray-500 mt-1">Orden visual: izquierda → derecha y luego arriba → abajo (máximo 2 columnas).</div>
+      <div class="mt-3 flex items-center gap-3">
+        <label class="text-sm text-gray-700">Tipo de Ítem</label>
+        <select id="typeSelect" class="border rounded px-2 py-1.5 bg-white">
+          <option value="producto">Producto</option>
+          <option value="servicio">Servicio</option>
+          <option value="combo">Combo</option>
+        </select>
+  <div id="typeSummaryFields" class="text-xs text-gray-500 ml-auto"></div>
+      </div>
+  <div id="veSections" class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+    </section>
+
+    <section class="bg-white border rounded-xl p-4">
+      <div class="mt-1">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <h2 class="text-lg font-semibold">Secciones por tipo</h2>
+          <div class="flex items-center gap-2 text-sm">
+            <label class="inline-flex items-center gap-2">Tipo
+              <select id="typeSelectSections" class="border rounded px-2 py-1.5 bg-white">
+                <option value="producto">Producto</option>
+                <option value="servicio">Servicio</option>
+                <option value="combo">Combo</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="text-xs text-gray-500 mb-2">Activa/ordena secciones para el tipo seleccionado. Orden 1 se muestra primero. Puedes bloquear una sección para evitar cambios.</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="sectionsGrid"></div>
+      </div>
+    </section>
+
+    <section class="bg-white border rounded-xl p-4 mt-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">Gestionar funciones</h2>
+        <div class="flex items-center gap-2">
+          <!-- Botón de combo removido temporalmente para limpiar UI/funciones -->
+          <button id="btnEnableComboDescSearch" class="px-3 py-1.5 rounded bg-cyan-700 text-white text-sm" title="Activa búsqueda en Descripción (Combo)"><i class="fa fa-magnifying-glass mr-1"></i>Desc. (Combo): búsqueda</button>
+          <button id="fnNew" class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm"><i class="fa fa-plus mr-1"></i>Nueva función</button>
+          <button id="btnArchiveLegacyService" class="px-3 py-1.5 rounded bg-amber-600 text-white text-sm" title="Archivar campos legacy de materiales en Servicio"><i class="fa fa-box-archive mr-1"></i>Limpiar Servicio (legacy)</button>
+          <button id="btnArchiveLegacyCombo" class="px-3 py-1.5 rounded bg-amber-600 text-white text-sm" title="Archivar campos legacy de combo (oculta listas/buscadores antiguos)"><i class="fa fa-box-archive mr-1"></i>Limpiar Combo (legacy)</button>
+          <button id="btnPurgeServiceMaterials" class="px-3 py-1.5 rounded bg-red-600 text-white text-sm" title="Eliminar campo y funciones de Materiales del Servicio (lista)"><i class="fa fa-trash mr-1"></i>Eliminar Materiales (dinámicos)</button>
+          
+        </div>
+      </div>
+  <div class="text-xs text-gray-500 mb-2">Crea funciones reutilizables: <b>Buscar Ítems</b>, <b>Sugerir valores de campo</b> (marca/modelo) y <b>Agregar a lista al seleccionar</b>.</div>
+      <div class="border rounded overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-gray-600"><tr><th class="p-2 text-left">Clave</th><th class="p-2 text-left">Tipo</th><th class="p-2 text-left">Config</th><th class="p-2 text-center">Acciones</th></tr></thead>
+          <tbody id="fnTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Acciones (onSelect) separadas para gobernar qué pasa cuando se selecciona un resultado -->
+    <section class="bg-white border rounded-xl p-4 mt-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">Gestionar acciones (onSelect)</h2>
+        <div class="flex items-center gap-2">
+          <button id="actionNew" class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm"><i class="fa fa-plus mr-1"></i>Nueva acción</button>
+        </div>
+      </div>
+      <div class="text-xs text-gray-500 mb-2">Define qué ocurre al seleccionar un resultado: por ejemplo, <b>agregar a lista</b> en vez de abrir el ítem.</div>
+      <div class="border rounded overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-gray-600"><tr><th class="p-2 text-left">Clave</th><th class="p-2 text-left">Tipo</th><th class="p-2 text-left">Targets</th><th class="p-2 text-center">Acciones</th></tr></thead>
+          <tbody id="actionsTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="bg-white border rounded-xl p-4 mt-4">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <div class="flex items-center gap-3">
+          <h2 class="text-lg font-semibold">Campos por tipo</h2>
+          <div class="text-xs text-gray-500">Administra TODOS los campos definidos en el sistema (incluye duplicados). Puedes habilitar/ocultar, marcar como requeridos, cambiar orden, editar o eliminar.</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnNewField" class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm"><i class="fa fa-plus mr-1"></i>Campo nuevo</button>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 mb-3">
+        <label class="text-sm text-gray-700 flex items-center gap-2">
+          Tipo
+          <select id="typeSelectFields" class="border rounded px-2 py-1.5 bg-white min-w-[160px]">
+            <option value="producto">Producto</option>
+            <option value="servicio">Servicio</option>
+            <option value="combo">Combo</option>
+          </select>
+        </label>
+        <label class="text-sm text-gray-700 flex items-center gap-2">
+          Grupo
+          <select id="groupFilter" class="border rounded px-2 py-1.5 bg-white min-w-[160px]">
+            <option value="">Todos los grupos</option>
+          </select>
+        </label>
+        <label class="text-sm text-gray-700 flex-1 min-w-[220px]">
+          <span class="sr-only">Buscar</span>
+          <input id="searchInput" type="text" class="border rounded px-2 py-1.5 w-full" placeholder="Buscar por clave o etiqueta…">
+        </label>
+        <label class="text-sm text-gray-700 flex items-center gap-2">
+          <input type="checkbox" id="onlyEnabledFilter" class="align-middle"> Solo habilitados
+        </label>
+        <div id="typeSummary" class="text-xs text-gray-500 ml-auto"></div>
+      </div>
+      <div class="border rounded overflow-hidden">
+        <div id="fieldsTable" class="grid grid-cols-7 text-sm">
+          <div class="p-2 bg-gray-50 font-medium">Campo</div>
+          <div class="p-2 bg-gray-50 font-medium text-center">Grupo</div>
+          <div class="p-2 bg-gray-50 font-medium text-center">Bloq.</div>
+          <div class="p-2 bg-gray-50 font-medium text-center">Visible</div>
+          <div class="p-2 bg-gray-50 font-medium text-center">Req.</div>
+          <div class="p-2 bg-gray-50 font-medium text-center">Orden</div>
+          <div class="p-2 bg-gray-50 font-medium text-center">Acciones</div>
+          <!-- Las filas se renderizan dinámicamente -->
+        </div>
+      </div>
+      <div class="mt-2 text-[11px] text-gray-500">
+        Tip: si ves duplicados, puedes usar “Deduplicar claves” para archivarlos masivamente.
+      </div>
+    </section>
+
+    <section class="bg-white border rounded-xl p-4 mt-4">
+      <h2 class="text-lg font-semibold mb-2">Resumen</h2>
+      <div id="liveSummary" class="text-sm text-gray-700">—</div>
+    </section>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+  <script>
+    let db=null; let defsCol=null; let typeCfgCol=null; let secDefsCol=null; let fnCol=null; let sectionDefs=[];
+    let cfgBroadcast = null;
+    try { cfgBroadcast = new BroadcastChannel('item_type_field_config'); } catch(_) { cfgBroadcast = null; }
+    function notifyHost(){
+      try { window.parent?.postMessage({ type: 'typeFieldConfigChanged' }, '*'); } catch(_){ /* noop */ }
+      try { cfgBroadcast && cfgBroadcast.postMessage({ type:'typeFieldConfigChanged', at: Date.now() }); } catch(_){ /* noop */ }
+    }
+    function initFirebase(cfg){
+      if (!firebase.apps.length) firebase.initializeApp(cfg);
+      db = firebase.firestore();
+      defsCol = db.collection('item_field_definitions');
+      typeCfgCol = db.collection('item_type_field_config');
+      secDefsCol = db.collection('item_section_definitions');
+      fnCol = db.collection('item_field_functions');
+      if (!firebase.auth().currentUser) firebase.auth().signInAnonymously().catch(()=>{});
+    }
+
+    const DEFAULT_SECTIONS = [
+      { id:'basicos', name:'Básicos' },
+      { id:'categoria', name:'Categoría y Atributos' },
+      { id:'logistica', name:'Logística' },
+      { id:'trazabilidad', name:'Trazabilidad' },
+      { id:'precios', name:'Precios' },
+      { id:'impuestos', name:'Impuestos' },
+      { id:'ofertas', name:'Ofertas' },
+      { id:'servicio', name:'Extras de Servicio' },
+      { id:'multimedia', name:'Multimedia' },
+      { id:'combo', name:'Componentes del Combo', special:true }
+    ];
+
+    async function loadSectionDefs(){
+      const snap = await secDefsCol.orderBy('id').get();
+      sectionDefs = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(s=> s.archived!==true);
+      if (!sectionDefs.length){
+        const batch = db.batch();
+        DEFAULT_SECTIONS.forEach(s=> batch.set(secDefsCol.doc(s.id), { id:s.id, name:s.name, special:!!s.special, created_at: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true }));
+        await batch.commit();
+        const snap2 = await secDefsCol.orderBy('id').get();
+        sectionDefs = snap2.docs.map(d=>({ id:d.id, ...d.data() })).filter(s=> s.archived!==true);
+      }
+      return sectionDefs;
+    }
+
+    const DEFAULT_FIELDS = [
+      // Básicos
+      { key:'descripcion', label:'Descripción', group:'basicos', order:10 },
+      { key:'sku', label:'SKU', group:'basicos', order:20 },
+      { key:'marca', label:'Marca', group:'basicos', order:30 },
+      { key:'modelo', label:'Modelo', group:'basicos', order:40 },
+      { key:'proposito', label:'Propósito', group:'basicos', order:50 },
+      { key:'usaCodigoBarra', label:'Usa Código de Barra', group:'basicos', order:60 },
+      { key:'codigoBarra', label:'Código de Barra', group:'basicos', order:70 },
+      { key:'categoria', label:'Categoría (Taxonomía)', group:'basicos', order:80 },
+      // Logística
+      { key:'stockMinimo', label:'Stock Mínimo', group:'logistica', order:110 },
+      { key:'stockMaximo', label:'Stock Máximo', group:'logistica', order:120 },
+      { key:'tiempoReposicion', label:'Tiempo de Reposición', group:'logistica', order:130 },
+      { key:'altoCm', label:'Alto (cm)', group:'logistica', order:140 },
+      { key:'anchoCm', label:'Ancho (cm)', group:'logistica', order:150 },
+      { key:'profundoCm', label:'Profundidad (cm)', group:'logistica', order:160 },
+      { key:'pesoKg', label:'Peso (kg)', group:'logistica', order:170 },
+      // Trazabilidad
+      { key:'llevaNumeroSerie', label:'Lleva Número de Serie', group:'trazabilidad', order:210 },
+      { key:'manejaLote', label:'Maneja Lote', group:'trazabilidad', order:220 },
+      { key:'manejaVencimiento', label:'Maneja Fecha de Vencimiento', group:'trazabilidad', order:230 },
+      // Precios
+      { key:'pricingModel', label:'Modelo de Precio', group:'precios', order:310 },
+      { key:'hourlyRate', label:'Tarifa por Hora', group:'precios', order:320 },
+      { key:'costo', label:'Costo', group:'precios', order:330 },
+      { key:'utilidad', label:'Utilidad (%)', group:'precios', order:340 },
+      { key:'precioVenta', label:'Precio Venta', group:'precios', order:350 },
+      { key:'precioBase', label:'Precio Base', group:'precios', order:360 },
+      { key:'diferencial', label:'Diferencial (%)', group:'precios', order:370 },
+      { key:'precioFinal', label:'Precio Final', group:'precios', order:380 },
+      // Impuestos
+      { key:'esExento', label:'Es Exento', group:'impuestos', order:410 },
+      { key:'tipoImpuesto', label:'Tipo de Impuesto', group:'impuestos', order:420 },
+      { key:'impuestoAsignado', label:'Impuesto Asignado (%)', group:'impuestos', order:430 },
+      // Ofertas
+      { key:'estaEnOferta', label:'¿Está en Oferta?', group:'ofertas', order:510 },
+      { key:'ofertaTipo', label:'Tipo de Descuento', group:'ofertas', order:520 },
+      { key:'ofertaValor', label:'Valor del Descuento', group:'ofertas', order:530 },
+      { key:'ofertaMotivo', label:'Motivo', group:'ofertas', order:540 },
+      { key:'ofertaInicio', label:'Inicio', group:'ofertas', order:550 },
+      { key:'ofertaFin', label:'Fin', group:'ofertas', order:560 },
+      // Servicio
+    { key:'serviceSLA', label:'SLA por Defecto', group:'servicio', order:610 },
+    { key:'serviceChecklists', label:'Checklists', group:'servicio', order:620 },
+    
+    
+    // Combo (limpio): sin campos legacy de lista/buscador
+      // Multimedia
+      { key:'multimedia', label:'Imágenes/Multimedia', group:'multimedia', order:710 }
+    ];
+
+    const typeSelect = document.getElementById('typeSelect');
+  const groupFilter = document.getElementById('groupFilter');
+  const searchInput = document.getElementById('searchInput');
+  const sectionsGrid = document.getElementById('sectionsGrid');
+  const fieldsTable = document.getElementById('fieldsTable');
+  const typeSelectSections = document.getElementById('typeSelectSections');
+  const typeSelectFields = document.getElementById('typeSelectFields');
+  const onlyEnabledFilter = document.getElementById('onlyEnabledFilter');
+    const liveSummary = document.getElementById('liveSummary');
+    const typeSummary = document.getElementById('typeSummary');
+
+    document.getElementById('btnClearLocal')?.addEventListener('click', ()=>{
+      try {
+        localStorage.removeItem('itemTypeFieldConfigCache');
+        localStorage.removeItem('itemFieldDefsCache');
+        alert('Overrides locales limpiados.');
+      } catch(_){ alert('No se pudo limpiar almacenamiento local.'); }
+    });
+
+    async function seedSections(){
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+      await loadSectionDefs();
+      for (const s of DEFAULT_SECTIONS){
+        if (!sectionDefs.find(d=>d.id===s.id)){
+          await secDefsCol.doc(s.id).set({ id:s.id, name:s.name, special:!!s.special, created_at: now }, { merge:true });
+          sectionDefs.push({ id:s.id, name:s.name, special:!!s.special });
+        }
+      }
+      const defaults = {
+        'producto': ['basicos','categoria','precios','impuestos','ofertas','logistica','trazabilidad','multimedia'],
+        'servicio': ['basicos','categoria','precios','impuestos','ofertas','servicio','multimedia'],
+        'combo': ['basicos','categoria','precios','impuestos','ofertas','combo','multimedia']
+      };
+      for (const t of Object.keys(defaults)){
+        const list = defaults[t];
+        const doc = {
+          type: t,
+          sections: list.map((id, idx)=>({ id, enabled: true, visible: true, order: idx+1 })),
+          created_at: now
+        };
+        const q = await typeCfgCol.where('type','==',t).limit(1).get();
+        if (q.empty){ await typeCfgCol.add(doc); }
+        else { await typeCfgCol.doc(q.docs[0].id).set(doc, { merge: true }); }
+      }
+  alert('Secciones sembradas.');
+  await renderSections();
+  updateSummary();
+  notifyHost();
+    }
+
+    async function seedFields(){
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+      for (const f of DEFAULT_FIELDS){
+        const q = await defsCol.where('key','==',f.key).limit(1).get();
+        if (q.empty){
+          const base = {
+            key: f.key,
+            label: f.label,
+            group: f.group,
+            description: '',
+            example: '',
+            visible: true,
+            required: false,
+            order: f.order,
+            visibleByType: { producto: true, servicio: true, combo: true },
+            requiredByType: { producto: false, servicio: false, combo: false },
+            created_at: now
+          };
+          // Tipo de campo por defecto según clave
+          const key = f.key;
+          let fieldType = 'text';
+          if (['descripcion','marca','modelo','proposito','ofertaMotivo','serviceSLA','serviceChecklists'].includes(key)) fieldType = 'text';
+          if (['sku','tipoImpuesto','ofertaTipo','pricingModel'].includes(key)) fieldType = 'select';
+          if (['categoria'].includes(key)) fieldType = 'combobox';
+          if (['stockMinimo','stockMaximo','tiempoReposicion','altoCm','anchoCm','profundoCm','pesoKg','hourlyRate','costo','utilidad','precioVenta','precioBase','diferencial','precioFinal','impuestoAsignado','ofertaValor'].includes(key)) fieldType = 'number';
+          if (['usaCodigoBarra','llevaNumeroSerie','manejaLote','manejaVencimiento','esExento','estaEnOferta'].includes(key)) fieldType = 'checkbox';
+          if (['multimedia'].includes(key)) fieldType = 'media_mixed';
+          if (['comboItems'].includes(key)) fieldType = 'select';
+          // Eliminamos campos legacy de servicio; nueva lista usa listWithSearch
+          if (['comboComponentsList','serviceMaterialsList'].includes(key)) fieldType = 'listWithSearch';
+          base.fieldType = fieldType;
+          // Ajustes por tipo
+          if (['sku','marca','modelo','usaCodigoBarra','codigoBarra','logistica','trazabilidad'].includes(f.key)){
+            base.visibleByType.servicio = false; base.requiredByType.servicio = false;
+          }
+          if (['pricingModel','hourlyRate','serviceSLA','serviceChecklists','serviceComponents'].includes(f.key)){
+            base.visibleByType.producto = (f.key==='pricingModel');
+            base.requiredByType.producto = false;
+          }
+          if (f.key==='comboItems'){
+            base.visibleByType = { producto:false, servicio:false, combo:true };
+            base.requiredByType = { producto:false, servicio:false, combo:false };
+          }
+          if (f.key==='comboComponentSearch'){
+            base.visibleByType = { producto:false, servicio:false, combo:true };
+            base.requiredByType = { producto:false, servicio:false, combo:false };
+          }
+          if (f.key==='comboComponentsList'){
+            base.visibleByType = { producto:false, servicio:false, combo:true };
+            base.requiredByType = { producto:false, servicio:false, combo:false };
+          }
+          
+          if (f.key==='serviceMaterialsList'){
+            base.visibleByType = { producto:false, servicio:true, combo:false };
+            base.requiredByType = { producto:false, servicio:false, combo:false };
+          }
+          // Condición de ejemplo: códigoBarra visible solo si usaCodigoBarra = true
+          if (key==='codigoBarra'){
+            base.visibleWhen = { fieldKey: 'usaCodigoBarra', equals: 'true' };
+            base.visibleWhenRules = [{ fieldKey: 'usaCodigoBarra', op:'equals', value:'true' }];
+            base.visibleWhenLogic = 'AND';
+          }
+          await defsCol.add(base);
+        }
+      }
+  alert('Campos sembrados.');
+  await loadAndRenderFields();
+  updateSummary();
+  notifyHost();
+    }
+
+  document.getElementById('btnSeedSections')?.addEventListener('click', async ()=>{ await seedSections(); try{ localStorage.removeItem('itemTypeFieldConfigCache'); }catch(_){} renderVisualEditor(); });
+  document.getElementById('btnSeedFields')?.addEventListener('click', async ()=>{ await seedFields(); try{ localStorage.removeItem('itemFieldDefsCache'); }catch(_){} renderVisualEditor(); });
+  // Botón de Combo eliminado
+  // (removido) Forzar funciones de Materiales del Servicio
+  document.getElementById('btnPurgeServiceMaterials')?.addEventListener('click', async ()=>{ await purgeServiceMaterialsDynamic(); });
+  document.getElementById('btnEnableComboDescSearch')?.addEventListener('click', async ()=>{ await seedComboDescSearchFunctions(); });
+  
+  document.getElementById('btnArchiveLegacyService')?.addEventListener('click', async ()=>{
+    if (!confirm('Esto archivará campos legacy de materiales en la sección Servicio (listas/buscadores antiguos). ¿Continuar?')) return;
+    try{
+      const keys = ['serviceComponents','serviceMaterialSearch','serviceComponentsList'];
+      const snap = await defsCol.where('group','==','servicio').get();
+      const cand = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+        .filter(r=> (keys.includes(r.key)) || ((['listWithSearch','search'].includes(r.fieldType)) && r.key!=='serviceMaterialsList'));
+      if (!cand.length){ alert('No se encontraron campos legacy de servicio.'); return; }
+      const batch = db.batch();
+      cand.forEach(r=> batch.set(defsCol.doc(r.id), { archived:true, visible:false }, { merge:true }));
+      await batch.commit();
+      fieldRows = fieldRows.filter(r=> !cand.some(c=>c.id===r.id));
+      renderFields(); renderVisualEditor(); updateSummary(); notifyHost();
+      alert(`Archivados ${cand.length} campo(s) legacy de servicio.`);
+    }catch(e){ console.warn('Archivar servicio legacy falló', e); alert('No se pudo archivar campos legacy. Revisa consola.'); }
+  });
+  document.getElementById('btnArchiveLegacyCombo')?.addEventListener('click', async ()=>{
+    if (!confirm('Esto archivará campos legacy de la sección Combo (listas/buscadores antiguos). ¿Continuar?')) return;
+    try{
+      const keys = ['comboComponentsList','comboComponentSearch','comboItems'];
+      const snap = await defsCol.where('group','==','combo').get();
+      const cand = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+        .filter(r=> (keys.includes(r.key)) || (['listWithSearch','search'].includes(r.fieldType)));
+      if (!cand.length){ alert('No se encontraron campos legacy de combo.'); return; }
+      const batch = db.batch();
+      cand.forEach(r=> batch.set(defsCol.doc(r.id), { archived:true, visible:false }, { merge:true }));
+      await batch.commit();
+      fieldRows = fieldRows.filter(r=> !cand.some(c=>c.id===r.id));
+      renderFields(); renderVisualEditor(); updateSummary(); notifyHost();
+      alert(`Archivados ${cand.length} campo(s) legacy de combo.`);
+    }catch(e){ console.warn('Archivar combo legacy falló', e); alert('No se pudo archivar campos legacy. Revisa consola.'); }
+  });
+  document.getElementById('btnDedupKeys')?.addEventListener('click', async ()=>{
+    if (!confirm('Esto archivará definiciones duplicadas por clave, manteniendo la primera por orden. ¿Continuar?')) return;
+    try{
+      const map = new Map();
+      (fieldRows||[]).filter(r=>r.archived!==true).forEach(r=>{
+        const k = (r.key||'').trim();
+        if (!map.has(k)) map.set(k, []);
+        map.get(k).push(r);
+      });
+      const dups = Array.from(map.entries()).filter(([k, arr])=> k && arr.length>1);
+      if (!dups.length){ alert('No se encontraron claves duplicadas.'); return; }
+      const batch = db.batch();
+      let archivedCount = 0;
+      dups.forEach(([k, arr])=>{
+        // Mantener la que tenga menor order; el resto archivar
+        const sorted = arr.slice().sort((a,b)=> (a.order??9999)-(b.order??9999));
+        const keep = sorted[0];
+        sorted.slice(1).forEach(r=>{ batch.set(defsCol.doc(r.id), { archived:true, visible:false }, { merge:true }); archivedCount++; });
+      });
+      await batch.commit();
+      fieldRows = fieldRows.filter(r=> !(r.key && map.get(r.key)?.length>1 && r.id !== map.get(r.key).slice().sort((a,b)=> (a.order??9999)-(b.order??9999))[0].id));
+      renderFields(); renderVisualEditor(); updateSummary(); notifyHost();
+      alert(`Archivados ${archivedCount} duplicados. Se mantuvo la primera por orden en cada clave.`);
+    }catch(e){ console.warn('Dedup falló', e); alert('No se pudo deduplicar. Revisa consola.'); }
+  });
+  document.getElementById('btnReindexSections')?.addEventListener('click', async ()=>{
+    try{
+      const container = document.getElementById('veSections');
+      const cards = Array.from(container.querySelectorAll('[data-sec]'));
+      const type = typeSelect.value;
+      const cfg2 = await fetchTypeCfg(type);
+      const rows = cards.map((el, idx)=>{
+        const id = el.getAttribute('data-sec');
+        const s = (cfg2.sections||[]).find(x=>x.id===id) || { id, visible:true, locked:false };
+        return { id, enabled: s.enabled!==false, visible: s.visible!==false, order: idx+1, locked: !!s.locked };
+      });
+      const doc = { type, sections: rows };
+      if (cfg2.id) await typeCfgCol.doc(cfg2.id).set(doc, { merge:true }); else await typeCfgCol.add(doc);
+      renderVisualEditor(); renderSections(); updateSummary(); notifyHost();
+      alert('Se reindexaron las secciones (1..n) según el orden visual.');
+    }catch(e){ console.warn('Reindex falló', e); alert('No se pudo reindexar.'); }
+  });
+
+    async function fetchTypeCfg(type){
+      const q = await typeCfgCol.where('type','==',type).limit(1).get();
+      if (q.empty) return { id:null, type, sections: [] };
+      return { id: q.docs[0].id, ...(q.docs[0].data()) };
+    }
+
+    async function renderSections(){
+      const type = (typeSelectSections?.value) || typeSelect.value;
+      const cfg = await fetchTypeCfg(type);
+      await loadSectionDefs();
+      const map = new Map((cfg.sections||[]).map(s=>[s.id, s]));
+      sectionsGrid.innerHTML = sectionDefs.map(sec=>{
+        const s = map.get(sec.id) || { id: sec.id, enabled: true, visible: true, order: 99, locked: false };
+        const chkEnabled = (s.enabled!==false) ? 'checked' : '';
+        const chkVisible = (s.visible!==false) ? 'checked' : '';
+        const val = typeof s.order==='number'? s.order : 99;
+        return `<div class="border rounded p-3 flex items-center justify-between" data-sec="${sec.id}">
+          <div>
+            <div class="font-medium">${sec.name}</div>
+            <div class="text-xs text-gray-500">${sec.id}</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="text-xs inline-flex items-center" title="Bloquear edición"><input type="checkbox" class="mr-1 lock"> Bloq.</label>
+            <label class="text-xs inline-flex items-center" title="Habilitar/Deshabilitar sección en el creador"><input type="checkbox" class="mr-1 en" ${chkEnabled}> Habilitada</label>
+            <label class="text-xs inline-flex items-center" title="Mostrar/Ocultar sección (si está habilitada)"><input type="checkbox" class="mr-1 vis" ${chkVisible}> Visible</label>
+            <div class="text-xs">Orden <input type="number" class="w-16 ml-1 px-1 py-0.5 border rounded ord" value="${val}" min="1"></div>
+          </div>
+        </div>`;
+      }).join('');
+      // Aplicar estados de bloqueo y deshabilitar controles cuando locked
+      Array.from(sectionsGrid.querySelectorAll('[data-sec]')).forEach(row=>{
+        const id = row.getAttribute('data-sec'); const s = map.get(id) || {};
+        const lock = row.querySelector('.lock'); const en = row.querySelector('.en'); const vis = row.querySelector('.vis'); const ord = row.querySelector('.ord');
+        if (lock){ lock.checked = !!s.locked; }
+        const disabled = !!s.locked;
+        if (en) en.disabled = disabled;
+        if (vis) vis.disabled = disabled;
+        if (ord) ord.disabled = disabled;
+      });
+      sectionsGrid.addEventListener('input', onSectionChange);
+      sectionsGrid.addEventListener('change', onSectionChange);
+      updateSummary();
+    }
+
+    async function onSectionChange(){
+      const type = (typeSelectSections?.value) || typeSelect.value;
+      const cfg = await fetchTypeCfg(type);
+      const rows = Array.from(sectionsGrid.querySelectorAll('[data-sec]')).map(row=>{
+        const id = row.getAttribute('data-sec');
+        const en = row.querySelector('.en')?.checked;
+        const vis = row.querySelector('.vis').checked;
+        const ord = parseInt(row.querySelector('.ord').value, 10);
+        const locked = !!row.querySelector('.lock')?.checked;
+        return { id, enabled: en!==false, visible: !!vis, order: isNaN(ord)? 99 : ord, locked };
+      });
+      const doc = { type, sections: rows };
+      if (cfg.id) await typeCfgCol.doc(cfg.id).set(doc, { merge: true }); else await typeCfgCol.add(doc);
+      updateSummary();
+      notifyHost();
+      sectionsGrid.addEventListener('input', onSectionChange, { once: true });
+      sectionsGrid.addEventListener('change', onSectionChange, { once: true });
+    }
+
+    let fieldRows = [];
+    async function loadAndRenderFields(){
+      // Evitar requerir índice compuesto: cargamos sin orderBy y ordenamos en memoria
+      const snap = await defsCol.get();
+      fieldRows = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+        .sort((a,b)=>{
+          const ga = (a.group||''); const gb = (b.group||'');
+          if (ga !== gb) return ga.localeCompare(gb);
+          const oa = (typeof a.order==='number')? a.order : 9999;
+          const ob = (typeof b.order==='number')? b.order : 9999;
+          return oa - ob;
+        });
+      // Normalizar claves faltantes para evitar 'undefined' en UI; usar id como key única
+      const missingKey = fieldRows.filter(r=> !r.key);
+      if (missingKey.length){
+        try{
+          const batch = db.batch();
+          missingKey.forEach(r=> batch.set(defsCol.doc(r.id), { key: r.id }, { merge:true }));
+          await batch.commit();
+          missingKey.forEach(r=>{ r.key = r.id; });
+        }catch(e){ console.warn('No se pudo normalizar keys faltantes:', e); }
+      }
+      // Si no existe la tabla de campos (lista obsoleta), salir sin renderizar listado
+      if (groupFilter){
+        const groups = Array.from(new Set(fieldRows.map(r=>r.group))).sort();
+        groupFilter.innerHTML = '<option value="">Todos los grupos</option>' + groups.map(g=>`<option value="${g}">${g}</option>`).join('');
+      }
+      if (fieldsTable){ renderFields(); }
+    }
+
+    function renderFields(){
+      if (!fieldsTable) return; // lista obsoleta no presente
+      const type = (typeSelectFields?.value) || typeSelect.value;
+      const gf = groupFilter.value;
+      const q = (searchInput.value||'').toLowerCase();
+      const isMatch = (r)=> !q || (r.key?.toLowerCase().includes(q) || r.label?.toLowerCase().includes(q));
+      let rows = fieldRows.filter(r=>(!gf || r.group===gf) && isMatch(r) && r.archived!==true);
+      if (onlyEnabledFilter?.checked){
+        rows = rows.filter(r=> (r.visibleByType && typeof r.visibleByType[type]!== 'undefined') ? !!r.visibleByType[type] : (r.visible!==false));
+      }
+      const body = rows.map(r=>{
+        const vis = (r.visibleByType && typeof r.visibleByType[type]!== 'undefined') ? !!r.visibleByType[type] : (r.visible!==false);
+        const req = (r.requiredByType && typeof r.requiredByType[type]!== 'undefined') ? !!r.requiredByType[type] : !!r.required;
+        const ord = (typeof r.order==='number') ? r.order : '';
+        const disabled = !!r.locked;
+        const lockIcon = r.locked? 'fa-lock text-amber-600':'fa-lock-open text-gray-500';
+        const keyStr = r.key || r.id || '—';
+        return `<div class="truncate" title="${keyStr}"><span class="font-medium">${r.label||keyStr}</span><div class="text-[10px] text-gray-500">${keyStr}</div></div>
+          <div class="text-center">${r.group||''}</div>
+          <div class="text-center"><button class="px-2 py-1 text-xs rounded bg-gray-100 toggle-lock" data-id="${r.id}" title="Alternar bloqueo"><i class="fa ${lockIcon}"></i></button></div>
+          <div class="text-center"><input type="checkbox" class="vis" ${vis? 'checked':''} data-id="${r.id}" ${disabled? 'disabled':''}></div>
+          <div class="text-center"><input type="checkbox" class="req" ${req? 'checked':''} data-id="${r.id}" ${disabled? 'disabled':''}></div>
+          <div class="text-center"><input type="number" class="w-20 px-1 py-0.5 border rounded ord" value="${ord}" ${disabled? 'disabled':''}></div>
+          <div class="text-center space-x-2">
+            <button class="px-2 py-1 bg-gray-100 rounded edit-field" data-id="${r.id}"><i class="fa fa-pen"></i></button>
+            <button class="px-2 py-1 bg-red-500 text-white rounded del-field" data-id="${r.id}"><i class="fa fa-trash"></i></button>
+          </div>`;
+      }).join('');
+      // Replace rows (keep header 5 divs)
+      while (fieldsTable.children.length > 7) fieldsTable.removeChild(fieldsTable.lastChild);
+      const wrapper = document.createElement('div'); wrapper.innerHTML = body; const frags = Array.from(wrapper.children);
+      frags.forEach(ch => fieldsTable.appendChild(ch));
+  fieldsTable.removeEventListener?.('input', onFieldInput);
+  fieldsTable.removeEventListener?.('change', onFieldChange);
+  fieldsTable.removeEventListener?.('click', onFieldClick);
+  fieldsTable.addEventListener?.('input', onFieldInput);
+  fieldsTable.addEventListener?.('change', onFieldChange);
+  fieldsTable.addEventListener?.('click', onFieldClick);
+      updateSummary();
+      notifyHost();
+    }
+
+    async function onFieldChange(e){
+      const cell = e.target;
+      const rowId = cell.getAttribute('data-id');
+      const type = typeSelect.value;
+      if (!rowId) return;
+      const docRef = defsCol.doc(rowId);
+      if (cell.classList.contains('vis')){
+        const snap = await docRef.get(); const d = snap.data()||{}; const map = Object.assign({ producto:true, servicio:true, combo:true }, d.visibleByType||{});
+        map[type] = !!cell.checked; await docRef.update({ visibleByType: map });
+      }
+      if (cell.classList.contains('req')){
+        const snap = await docRef.get(); const d = snap.data()||{}; const map = Object.assign({ producto:false, servicio:false, combo:false }, d.requiredByType||{});
+        map[type] = !!cell.checked; await docRef.update({ requiredByType: map });
+      }
+      updateSummary();
+    }
+
+    let ordTimer=null;
+    function onFieldInput(e){
+      if (!e.target.classList.contains('ord')) return;
+      clearTimeout(ordTimer);
+      ordTimer = setTimeout(async ()=>{
+        const inputs = Array.from(fieldsTable.querySelectorAll('input.ord'));
+        for (const el of inputs){
+          const parentIdx = Array.from(fieldsTable.children).indexOf(el); // not used; we have data in memory
+          const id = el.previousElementSibling?.querySelector('input.req')?.getAttribute('data-id') || el.previousElementSibling?.getAttribute('data-id');
+          const row = fieldRows.find(r=>r.id===id);
+          const v = parseInt(el.value,10);
+          if (row && !isNaN(v) && row.order!==v){ try{ await defsCol.doc(row.id).update({ order: v }); row.order=v; }catch(_){}}
+        }
+        updateSummary();
+        renderFields();
+      }, 300);
+    }
+
+    async function onFieldClick(e){
+      const btn = e.target.closest('button'); if (!btn) return;
+      if (btn.classList.contains('toggle-lock')){
+        const id = btn.getAttribute('data-id');
+        const row = fieldRows.find(r=>r.id===id); if (!row) return;
+        const locked = !row.locked; await defsCol.doc(id).set({ locked }, { merge:true }); row.locked = locked; renderFields(); notifyHost(); return;
+      }
+      if (btn.classList.contains('edit-field')){
+        const id = btn.getAttribute('data-id');
+        const row = fieldRows.find(r=>r.id===id); if (!row) return;
+        openFieldModal('edit', row);
+        return;
+      }
+      if (btn.classList.contains('del-field')){
+        const id = btn.getAttribute('data-id');
+        const row = fieldRows.find(r=>r.id===id); if (!row) return;
+            // Validaciones de gobernanza antes de archivar
+            try{
+              const key = row.key || row.id;
+              const dependents = (fieldRows||[]).filter(r=> r.id!==row.id && r.archived!==true && (
+                (r.anchored && r.anchored.enabled && r.anchored.parentKey===key) ||
+                (Array.isArray(r.visibleWhenRules) && r.visibleWhenRules.some(rr=> rr.fieldKey===key)) ||
+                (Array.isArray(r.requiredWhenRules) && r.requiredWhenRules.some(rr=> rr.fieldKey===key)) ||
+                (r.visibleWhen && r.visibleWhen.fieldKey===key) ||
+                (r.requiredWhen && r.requiredWhen.fieldKey===key)
+              ));
+              let fnRefs = [];
+              try{
+                const snap = await fnCol.get();
+                fnRefs = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+                  .filter(f=> Array.isArray(f.targets) && f.targets.includes(key));
+              }catch(_){ fnRefs = []; }
+              if (dependents.length || fnRefs.length){
+                const depsStr = dependents.slice(0,5).map(d=> d.label||d.key||d.id).join(', ');
+                const fnStr = fnRefs.slice(0,5).map(f=> f.key||f.id).join(', ');
+                const msg = `Este campo está referenciado por ${dependents.length} campo(s) y ${fnRefs.length} función(es).\n`
+                  + (dependents.length? `Campos dependientes: ${depsStr}${dependents.length>5?' …':''}\n` : '')
+                  + (fnRefs.length? `Funciones: ${fnStr}${fnRefs.length>5?' …':''}\n` : '')
+                  + `Para archivar, primero quite/ajuste esas referencias.`;
+                alert(msg);
+                return;
+              }
+              if (!confirm('¿Archivar este campo? Puedes restaurarlo editando en Firestore.')) return;
+              await defsCol.doc(id).set({ archived: true, visible: false }, { merge:true });
+              fieldRows = fieldRows.filter(r=>r.id!==id);
+              renderFields();
+              updateSummary();
+              notifyHost();
+            }catch(e){ console.warn('Archivar con validaciones falló', e); alert('No se pudo archivar. Revisa consola.'); }
+        return;
+      }
+    }
+
+    function updateSummary(){
+      const type = (typeSelectFields?.value) || typeSelect.value;
+      const byGroup = {};
+      for (const r of fieldRows){
+        const vis = (r.visibleByType && typeof r.visibleByType[type]!== 'undefined') ? !!r.visibleByType[type] : (r.visible!==false);
+        if (!byGroup[r.group]) byGroup[r.group] = { total:0, visible:0, required:0 };
+        byGroup[r.group].total++;
+        if (vis) byGroup[r.group].visible++;
+        if (r.requiredByType && r.requiredByType[type]) byGroup[r.group].required++;
+      }
+      const parts = Object.keys(byGroup).sort().map(g=>{
+        const v = byGroup[g];
+        return `<span class="mr-3"><span class="font-medium">${g}</span>: <span class="badge bg-cyan-100 text-cyan-700">${v.visible}/${v.total} visibles</span> · <span class="badge bg-amber-100 text-amber-700">${v.required} req.</span></span>`;
+      });
+      liveSummary.innerHTML = parts.length? parts.join(' ') : '—';
+      typeSummary.textContent = `Tipo: ${type}`;
+    }
+
+  typeSelect.addEventListener('change', ()=>{
+    try{ if (typeSelectSections) typeSelectSections.value = typeSelect.value; }catch(_){}
+    try{ if (typeSelectFields) typeSelectFields.value = typeSelect.value; }catch(_){}
+    renderSections(); if (fieldsTable) renderFields(); renderVisualEditor();
+  });
+  typeSelectSections?.addEventListener('change', ()=>{
+    try{ if (typeSelect) typeSelect.value = typeSelectSections.value; }catch(_){}
+    try{ if (typeSelectFields) typeSelectFields.value = typeSelectSections.value; }catch(_){}
+    renderSections(); if (fieldsTable) renderFields(); renderVisualEditor();
+  });
+  typeSelectFields?.addEventListener('change', ()=>{
+    try{ if (typeSelect) typeSelect.value = typeSelectFields.value; }catch(_){}
+    try{ if (typeSelectSections) typeSelectSections.value = typeSelectFields.value; }catch(_){}
+    if (fieldsTable) renderFields(); renderSections(); renderVisualEditor();
+  });
+    groupFilter?.addEventListener('change', renderFields);
+    searchInput?.addEventListener('input', ()=>{ renderFields(); });
+    onlyEnabledFilter?.addEventListener('change', ()=>{ renderFields(); });
+  document.getElementById('btnNewField')?.addEventListener('click', ()=> openFieldModal('create'));
+
+    // Handshake con host
+    window.parent?.postMessage({ type: 'requestUserData' }, '*');
+    window.addEventListener('message', (ev)=>{
+      if (ev.data && ev.data.type === 'hostAuthReady' && ev.data.firebaseConfig){ initFirebase(ev.data.firebaseConfig); start(); }
+    });
+
+    async function start(){
+      // Sincronizar selects de tipo al iniciar
+      try{ if (typeSelectSections) typeSelectSections.value = typeSelect.value; }catch(_){}
+      try{ if (typeSelectFields) typeSelectFields.value = typeSelect.value; }catch(_){}
+      await Promise.all([loadSectionDefs(), renderSections(), loadAndRenderFields(), renderFunctions(), renderActions()]);
+      // Ya no se crea automáticamente ningún buscador/lista en Servicio; se hace a demanda con el botón correspondiente
+      updateSummary();
+      renderVisualEditor();
+    }
+
+    // (Eliminado) Se removió la siembra de funciones/campo para lista de componentes del combo
+
+    // ======= Siembra/forzado de funciones para Materiales del Servicio (nueva lista) =======
+    // Purga total de Materiales del Servicio (dinámicos): elimina campo(s) listWithSearch en 'servicio' y funciones/acciones relacionadas
+    async function purgeServiceMaterialsDynamic(){
+      if (!confirm('Esto ELIMINARÁ el campo "Materiales del Servicio (lista)" y sus funciones/acciones asociadas. ¿Continuar?')) return;
+      try{
+        // 1) Borrar campos en defs (serviceMaterialsList + cualquier listWithSearch en grupo servicio)
+        const snapDefs = await defsCol.where('group','==','servicio').get();
+        const toDeleteDefs = snapDefs.docs.map(d=>({ id:d.id, ...d.data() }))
+          .filter(r=> r.key==='serviceMaterialsList' || r.fieldType==='listWithSearch');
+        for (const r of toDeleteDefs){ await defsCol.doc(r.id).delete(); }
+        // 2) Borrar funciones/acciones en fnCol relacionadas
+        const snapFns = await fnCol.get();
+        const fns = snapFns.docs.map(d=>({ id:d.id, ...d.data() }));
+        const toDeleteFns = fns.filter(fn=>{
+          const k = fn.key||'';
+          const targets = Array.isArray(fn.targets)? fn.targets : [];
+          return k==='service_materials_searchItems' || k==='service_materials_onSelectAddToList' || targets.includes('serviceMaterialsList') || k==='service_items_searchItems' || k==='service_items_onSelectAddToList' || targets.includes('serviceItemsList');
+        });
+        for (const fn of toDeleteFns){ await fnCol.doc(fn.id).delete(); }
+        // Refrescar UI
+        await Promise.all([loadAndRenderFields(), renderFunctions(), renderActions(), renderVisualEditor()]);
+        updateSummary(); notifyHost();
+        alert(`Eliminados ${toDeleteDefs.length} campo(s) y ${toDeleteFns.length} función(es)/acción(es).`);
+      }catch(e){ console.warn('purgeServiceMaterialsDynamic', e); alert('No se pudo eliminar. Revisa consola.'); }
+    }
+
+    
+
+    // ======= Siembra/forzado de funciones para búsqueda en Descripción (Combo) =======
+    async function seedComboDescSearchFunctions(){
+      try{
+        // 1) searchItems targeteando 'descripcion'
+        const keySearch = 'combo_desc_searchItems';
+        const snapSearch = await fnCol.where('key','==', keySearch).limit(1).get();
+        const payloadSearch = {
+          key: keySearch,
+          type: 'searchItems',
+          config: { searchBy: ['descripcion','sku','codigoBarra','marca','modelo'] },
+          targets: ['descripcion']
+        };
+        if (snapSearch.empty){ await fnCol.add({ ...payloadSearch, created_at: firebase.firestore.FieldValue.serverTimestamp() }); }
+        else { await fnCol.doc(snapSearch.docs[0].id).set(payloadSearch, { merge:true }); }
+        // 2) Acción onSelect: llenar campo (sin navegar)
+        const keyOnSel = 'combo_desc_onSelectFillField';
+        const snapOnSel = await fnCol.where('key','==', keyOnSel).limit(1).get();
+        const payloadOnSel = {
+          key: keyOnSel,
+          type: 'onSelectFillField',
+          config: { fieldKey: 'descripcion', behavior: 'fillOnly', showExistsHint: true },
+          targets: ['descripcion']
+        };
+        if (snapOnSel.empty){ await fnCol.add({ ...payloadOnSel, created_at: firebase.firestore.FieldValue.serverTimestamp() }); }
+        else { await fnCol.doc(snapOnSel.docs[0].id).set(payloadOnSel, { merge:true }); }
+        await renderFunctions();
+        await renderActions();
+        updateSummary();
+        notifyHost();
+        alert('Búsqueda en Descripción (Combo) activada: función y acción creadas.');
+      }catch(e){ console.warn('seedComboDescSearchFunctions', e); alert('No se pudo activar la búsqueda en Descripción para Combo. Revise la consola.'); }
+    }
+
+    
+
+    // ======= Gestión de Secciones (CRUD) =======
+    let secModal=null;
+    function ensureSectionsModal(){
+      if (secModal) return secModal;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `
+      <div id="sectionsModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg w-full max-w-2xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold">Gestionar secciones</h3>
+            <button id="smClose" class="px-2 py-1 bg-gray-200 rounded">Cerrar</button>
+          </div>
+          <div class="flex items-center gap-2 mb-3">
+            <input id="smId" type="text" class="border rounded px-2 py-1 w-40" placeholder="id (slug)">
+            <input id="smName" type="text" class="border rounded px-2 py-1 flex-1" placeholder="Nombre de sección">
+            <label class="text-xs inline-flex items-center"><input id="smSpecial" type="checkbox" class="mr-1"> Especial</label>
+            <button id="smSave" class="px-3 py-1.5 bg-blue-600 text-white rounded">Guardar</button>
+          </div>
+          <div class="border rounded">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-gray-600"><tr><th class="p-2 text-left">ID</th><th class="p-2 text-left">Nombre</th><th class="p-2 text-center">Especial</th><th class="p-2 text-center">Acciones</th></tr></thead>
+              <tbody id="smTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+      document.body.appendChild(wrap);
+      secModal = document.getElementById('sectionsModal');
+      return secModal;
+    }
+
+    function openSectionsModal(){ const m = ensureSectionsModal(); renderSectionsTable(); m.classList.remove('hidden'); }
+    function closeSectionsModal(){ const m = ensureSectionsModal(); m.classList.add('hidden'); }
+    function renderSectionsTable(){
+      const tb = document.getElementById('smTable');
+      tb.innerHTML = sectionDefs.map(s=>`<tr data-id="${s.id}"><td class="p-2">${s.id}</td><td class="p-2">${s.name}</td><td class="p-2 text-center">${s.special? 'Sí':'No'}</td><td class="p-2 text-center"><button class="px-2 py-1 bg-gray-100 rounded sm-edit">Editar</button> <button class="px-2 py-1 bg-red-500 text-white rounded sm-del">Eliminar</button></td></tr>`).join('');
+    }
+  document.getElementById('btnManageSections').addEventListener('click', openSectionsModal);
+  document.getElementById('btnNewSection').addEventListener('click', ()=>{ openSectionsModal(); setTimeout(()=>{ document.getElementById('smId')?.focus(); }, 50); });
+    document.addEventListener('click', async (e)=>{
+      if (!secModal || secModal.classList.contains('hidden')) return;
+      if (e.target.id==='smClose'){ closeSectionsModal(); return; }
+      if (e.target.id==='smSave'){
+        const id = (document.getElementById('smId').value||'').trim();
+        const name = (document.getElementById('smName').value||'').trim();
+        const special = !!document.getElementById('smSpecial').checked;
+        if (!id || !/^[a-z0-9_]+$/.test(id)){ alert('ID de sección inválido (usa minúsculas, números y _).'); return; }
+        if (!name){ alert('Nombre requerido'); return; }
+        const exists = sectionDefs.find(s=>s.id===id);
+        await secDefsCol.doc(id).set({ id, name, special, archived:false, updated_at: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+        if (!exists) sectionDefs.push({ id, name, special }); else { exists.name = name; exists.special = special; }
+  renderSectionsTable(); await renderSections(); updateSummary(); renderVisualEditor();
+        document.getElementById('smId').value=''; document.getElementById('smName').value=''; document.getElementById('smSpecial').checked=false; document.getElementById('smId').disabled=false;
+        return;
+      }
+      const row = e.target.closest('tr[data-id]'); if (!row) return;
+      const id = row.getAttribute('data-id'); const def = sectionDefs.find(s=>s.id===id);
+      if (e.target.classList.contains('sm-edit')){
+        document.getElementById('smId').value = def.id; document.getElementById('smId').disabled=true;
+        document.getElementById('smName').value = def.name; document.getElementById('smSpecial').checked = !!def.special;
+        return;
+      }
+      if (e.target.classList.contains('sm-del')){
+        // Validaciones: si hay campos activos en esta sección, ofrecer moverlos a 'basicos' antes de archivar
+        const activeFields = (fieldRows||[]).filter(r=> r.group===id && r.archived!==true);
+        if (activeFields.length){
+          const proceed = confirm(`La sección tiene ${activeFields.length} campo(s) activos.\n¿Moverlos a 'basicos' automáticamente y archivar la sección?`);
+          if (!proceed) return;
+          try{
+            const batch = db.batch();
+            let maxOrder = Math.max(0, ...fieldRows.filter(r=> r.group==='basicos' && r.archived!==true).map(r=> r.order||0));
+            activeFields.forEach(f=>{ maxOrder+=1; batch.update(defsCol.doc(f.id), { group:'basicos', order: maxOrder }); f.group='basicos'; f.order=maxOrder; });
+            await batch.commit();
+          }catch(err){ console.warn('No se pudieron mover campos antes de archivar sección', err); alert('No se pudo mover campos. Operación cancelada.'); return; }
+        }
+        if (!confirm('¿Archivar esta sección? Se quitará de las configuraciones por tipo.')) return;
+        await secDefsCol.doc(id).set({ archived:true, updated_at: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+        sectionDefs = sectionDefs.filter(s=>s.id!==id);
+        // Quitar de configuraciones por tipo donde aparezca
+        const allTypes = ['producto','servicio','combo'];
+        for (const t of allTypes){
+          const q = await typeCfgCol.where('type','==',t).limit(1).get();
+          if (!q.empty){
+            const doc = q.docs[0];
+            const data = doc.data();
+            const secs = (data.sections||[]).filter(s=>s.id!==id);
+            await typeCfgCol.doc(doc.id).set({ sections: secs }, { merge:true });
+          }
+        }
+  renderSectionsTable(); await renderSections(); updateSummary(); renderVisualEditor();
+        return;
+      }
+    });
+
+    // ========== Modal de Campo (Crear/Editar) ==========
+    // Modal básico en runtime
+    let modalEl=null;
+    function ensureFieldModal(){
+      if (modalEl) return modalEl;
+      const div = document.createElement('div');
+      div.innerHTML = `
+      <div id="fieldModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg w-full max-w-lg p-4">
+          <h3 id="fieldModalTitle" class="text-lg font-semibold">Nuevo campo</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            <div class="sm:col-span-2"><label class="text-xs text-gray-600">Clave (única)</label><input id="fmKey" type="text" class="border rounded px-2 py-1 w-full" placeholder="slug_sin_espacios"></div>
+            <div class="sm:col-span-2"><label class="text-xs text-gray-600">Etiqueta</label><input id="fmLabel" type="text" class="border rounded px-2 py-1 w-full"></div>
+            <div><label class="text-xs text-gray-600">Grupo</label><input id="fmGroup" type="text" class="border rounded px-2 py-1 w-full" placeholder="basicos, precios, ..."></div>
+            <div><label class="text-xs text-gray-600">Orden</label><input id="fmOrder" type="number" class="border rounded px-2 py-1 w-full" placeholder="100"></div>
+            <div><label class="text-xs text-gray-600">Tipo de campo</label>
+              <select id="fmFieldType" class="border rounded px-2 py-1 w-full bg-white">
+                <option value="text">Texto</option>
+                <option value="number">Número</option>
+                <option value="select">Lista (select)</option>
+                <option value="combobox">ComboBox</option>
+                <option value="checkbox">Checkbox</option>
+                <option value="search">Buscador</option>
+                <option value="listWithSearch">Lista con buscador</option>
+                <option value="media_image">Media: Imagen</option>
+                <option value="media_video">Media: Video</option>
+                <option value="media_document">Media: Documento</option>
+                <option value="media_mixed">Media: Mixto</option>
+              </select>
+            </div>
+            <div class="sm:col-span-2"><label class="text-xs text-gray-600">Descripción</label><textarea id="fmDesc" rows="2" class="border rounded px-2 py-1 w-full"></textarea></div>
+            <div class="sm:col-span-2"><label class="text-xs text-gray-600">Ejemplo</label><input id="fmExample" type="text" class="border rounded px-2 py-1 w-full"></div>
+            <div id="fmSearchConfigRow" class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label class="inline-flex items-center text-xs"><input id="fmSearchEnabled" type="checkbox" class="mr-2"> Función: Buscar en Items</label>
+              <div id="fmSearchByWrap">
+                <label class="text-xs text-gray-600">Buscar por campo(s)</label>
+                <select id="fmSearchBy" multiple size="5" class="border rounded px-2 py-1 w-full bg-white">
+                  <option value="descripcion">descripcion</option>
+                  <option value="sku">sku</option>
+                  <option value="codigoBarra">codigoBarra</option>
+                  <option value="marca">marca</option>
+                  <option value="modelo">modelo</option>
+                </select>
+                <div class="text-[11px] text-gray-500 mt-1">Puede seleccionar uno o varios. Si selecciona varios, buscaremos en todos.</div>
+              </div>
+            </div>
+            <div class="sm:col-span-2 border rounded p-2 bg-gray-50">
+              <div class="text-xs font-semibold text-gray-700 mb-2">Condiciones avanzadas</div>
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="text-xs font-medium text-gray-700">Visible solo si…</div>
+                    <div class="text-[11px] text-gray-500 flex items-center gap-2">
+                      Lógica
+                      <select id="fmVisLogic" class="border rounded px-1 py-0.5 bg-white text-[11px]">
+                        <option value="AND">AND</option>
+                        <option value="OR">OR</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div id="fmVisCondList" class="space-y-2"></div>
+                  <button type="button" id="fmVisAdd" class="mt-2 px-2 py-1 text-xs bg-gray-100 rounded"><i class="fa fa-plus mr-1"></i>Agregar regla</button>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="text-xs font-medium text-gray-700">Obligatorio solo si…</div>
+                    <div class="text-[11px] text-gray-500 flex items-center gap-2">
+                      Lógica
+                      <select id="fmReqLogic" class="border rounded px-1 py-0.5 bg-white text-[11px]">
+                        <option value="AND">AND</option>
+                        <option value="OR">OR</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div id="fmReqCondList" class="space-y-2"></div>
+                  <button type="button" id="fmReqAdd" class="mt-2 px-2 py-1 text-xs bg-gray-100 rounded"><i class="fa fa-plus mr-1"></i>Agregar regla</button>
+                </div>
+              </div>
+              <div class="text-[11px] text-gray-500 mt-2">Reglas soportadas: igual, distinto, contiene, no contiene, empieza con, termina con, >, ≥, <, ≤, es verdadero/falso. Las reglas se guardan al pulsar «Guardar» del campo.</div>
+            </div>
+            <!-- Anclado al orden de otro campo -->
+            <div class="sm:col-span-2 border rounded p-2 bg-gray-50">
+              <div class="flex items-center justify-between">
+                <div class="text-xs font-semibold text-gray-700">Anclado al orden de otro campo</div>
+                <label class="text-xs inline-flex items-center"><input id="fmAnchorEnabled" type="checkbox" class="mr-1"> Activar anclado</label>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+                <div>
+                  <label class="text-xs text-gray-600">Campo padre</label>
+                  <select id="fmAnchorParent" class="border rounded px-2 py-1 w-full bg-white"></select>
+                </div>
+                <div>
+                  <label class="text-xs text-gray-600">Posición relativa</label>
+                  <select id="fmAnchorPos" class="border rounded px-2 py-1 w-full bg-white">
+                    <option value="after">Siguiente inmediato</option>
+                    <option value="right">A la derecha</option>
+                    <option value="below">Abajo (misma columna)</option>
+                    <option value="above">Arriba (misma columna)</option>
+                    <option value="left">A la izquierda</option>
+                  </select>
+                </div>
+                <div class="text-[11px] text-gray-500 sm:col-span-1 flex items-end">En el editor se limita a 2 columnas. Si el padre está en la columna derecha, "derecha" se interpreta como siguiente lugar disponible.</div>
+              </div>
+            </div>
+            <div><label class="inline-flex items-center text-xs"><input id="fmVisible" type="checkbox" class="mr-1" checked> Visible por defecto</label></div>
+            <div><label class="inline-flex items-center text-xs"><input id="fmRequired" type="checkbox" class="mr-1"> Requerido por defecto</label></div>
+          </div>
+          <div class="mt-4 flex justify-end gap-2">
+            <button id="fmCancel" class="px-3 py-1.5 bg-gray-200 rounded">Cancelar</button>
+            <button id="fmSave" class="px-3 py-1.5 bg-blue-600 text-white rounded">Guardar</button>
+          </div>
+        </div>
+      </div>`;
+      document.body.appendChild(div);
+      modalEl = document.getElementById('fieldModal');
+      return modalEl;
+    }
+
+    function closeFieldModal(){ const m = ensureFieldModal(); m.classList.add('hidden'); }
+
+    async function openFieldModal(mode, row){
+      const m = ensureFieldModal();
+      document.getElementById('fieldModalTitle').textContent = mode==='edit' ? 'Editar campo' : 'Nuevo campo';
+      const key = document.getElementById('fmKey');
+      const label = document.getElementById('fmLabel');
+      const group = document.getElementById('fmGroup');
+      const order = document.getElementById('fmOrder');
+      const desc = document.getElementById('fmDesc');
+      const example = document.getElementById('fmExample');
+      const fmVisible = document.getElementById('fmVisible');
+      const fmRequired = document.getElementById('fmRequired');
+      // Helpers para render y manejar listas de condiciones
+      const allCtrls = (fieldRows||[]).filter(r=> !row || r.id!==row.id).filter(r=> r.archived!==true);
+      const ctrlOptionsHtml = ['<option value="">— campo —</option>']
+        .concat(allCtrls.map(r=> `<option value="${r.key||r.id}">${(r.label||r.key||r.id)}</option>`)).join('');
+      const OPS = [
+        { v:'equals', t:'=' }, { v:'not_equals', t:'≠' },
+        { v:'contains', t:'contiene' }, { v:'not_contains', t:'no contiene' },
+        { v:'starts_with', t:'empieza con' }, { v:'ends_with', t:'termina con' },
+        { v:'gt', t:'>' }, { v:'gte', t:'≥' }, { v:'lt', t:'<' }, { v:'lte', t:'≤' },
+        { v:'is_true', t:'es verdadero' }, { v:'is_false', t:'es falso' },
+        { v:'in_list', t:'en lista (coma)' }
+      ];
+      const opOptionsHtml = OPS.map(o=>`<option value="${o.v}">${o.t}</option>`).join('');
+      function getCtrlDefByKey(k){ return (fieldRows||[]).find(r=> (r.key||r.id)===k); }
+      function addCondRow(listEl, def){
+        const w = document.createElement('div');
+        w.className = 'grid grid-cols-1 sm:grid-cols-12 gap-2 items-start';
+        w.innerHTML = `
+          <div class="sm:col-span-4 min-w-0"><select class="w-full border rounded px-2 py-1 bg-white cond-field">${ctrlOptionsHtml}</select></div>
+          <div class="sm:col-span-3 min-w-0"><select class="w-full border rounded px-2 py-1 bg-white cond-op">${opOptionsHtml}</select></div>
+          <div class="sm:col-span-5 min-w-0">
+            <div class="flex items-center gap-2">
+              <input type="text" class="border rounded px-2 py-1 w-full cond-val" placeholder="valor" />
+              <button type="button" class="shrink-0 px-2 py-1 text-xs bg-red-500 text-white rounded cond-del" title="Eliminar"><i class="fa fa-trash"></i></button>
+            </div>
+            <div class="text-[11px] text-gray-500 mt-1 cond-help hidden"></div>
+          </div>`;
+        listEl.appendChild(w);
+  const f = w.querySelector('.cond-field'); const o = w.querySelector('.cond-op'); let v = w.querySelector('.cond-val'); const help = w.querySelector('.cond-help');
+        if (def){ if (def.fieldKey) f.value = def.fieldKey; if (def.op) o.value = def.op; if (typeof def.value!=='undefined') v.value = ''+def.value; }
+        // Adaptar control de valor según tipo de campo controlador y operador
+        const updateValUI = ()=>{
+          const ctrl = getCtrlDefByKey(f.value||''); const ft = (ctrl && ctrl.fieldType) ? String(ctrl.fieldType) : 'text';
+          const op = o.value;
+          const needsVal = !(op==='is_true' || op==='is_false');
+          // Asegurar que existe un control .cond-val acorde al tipo requerido
+          const ensureValControl = (asSelect)=>{
+            let curr = w.querySelector('.cond-val');
+            if (asSelect){
+              if (!(curr && curr.tagName==='SELECT')){
+                const sel = document.createElement('select'); sel.className = 'border rounded px-2 py-1 w-full cond-val';
+                sel.innerHTML = '<option value="true">verdadero</option><option value="false">falso</option>';
+                if (curr){ curr.replaceWith(sel); } else { w.querySelector('.flex.items-center')?.prepend(sel); }
+                v = sel;
+              } else {
+                v = curr;
+              }
+            } else {
+              if (!(curr && curr.tagName==='INPUT')){
+                const inp = document.createElement('input'); inp.type='text'; inp.placeholder='valor'; inp.className='border rounded px-2 py-1 w-full cond-val';
+                if (curr){ curr.replaceWith(inp); } else { w.querySelector('.flex.items-center')?.prepend(inp); }
+                v = inp;
+              } else {
+                v = curr;
+              }
+            }
+          };
+          if (v) v.style.display = needsVal? '' : 'none';
+          help.classList.add('hidden'); help.textContent='';
+          if (!needsVal) return;
+          // Ajuste de tipo de input
+          if (op==='in_list'){
+            ensureValControl(false);
+            v.setAttribute('type','text');
+            v.setAttribute('placeholder','a,b,c');
+            help.textContent = 'Separe por comas.'; help.classList.remove('hidden');
+          } else if (ft==='number'){
+            ensureValControl(false);
+            v.setAttribute('type','number'); v.setAttribute('placeholder','0');
+          } else if (ft==='checkbox' && (op==='equals' || op==='not_equals')){
+            ensureValControl(true);
+            v.style.display = '';
+            help.classList.add('hidden');
+          } else {
+            ensureValControl(false);
+            v.setAttribute('type','text'); v.setAttribute('placeholder','valor');
+          }
+        };
+        f.addEventListener('change', updateValUI);
+        o.addEventListener('change', updateValUI);
+        updateValUI();
+        w.querySelector('.cond-del').addEventListener('click', ()=>{ w.remove(); });
+      }
+      function readCondList(listEl){
+        // Leer cada fila creada por addCondRow (independiente de clases de grid)
+        return Array.from(listEl.children).map(row=>{
+          const f = row.querySelector('.cond-field')?.value||'';
+          const o = row.querySelector('.cond-op')?.value||'equals';
+          const needsVal = !(o==='is_true'||o==='is_false');
+          const valEl = row.querySelector('.cond-val');
+          const v = needsVal && valEl ? (valEl.value||'') : '';
+          return f ? { fieldKey: f, op: o, value: v } : null;
+        }).filter(Boolean);
+      }
+
+  if (mode==='edit' && row){
+        key.value = row.key||''; key.disabled = true;
+        label.value = row.label||'';
+        group.value = row.group||'';
+        order.value = (typeof row.order==='number')? row.order: '';
+        desc.value = row.description||'';
+        example.value = row.example||'';
+        fmVisible.checked = row.visible!==false;
+        fmRequired.checked = !!row.required;
+        document.getElementById('fmFieldType').value = row.fieldType || 'text';
+        // Función especial (con soporte proxy de campos contenedor → campo buscador real)
+        const proxyMap = { serviceComponents: 'serviceMaterialSearch', comboItems: 'comboComponentSearch' };
+        const proxyTargetKey = proxyMap[row.key] || null;
+        let sfxSource = row;
+        if (proxyTargetKey){
+          const proxyRow = (fieldRows||[]).find(r=> (r.key||r.id)===proxyTargetKey);
+          if (proxyRow) sfxSource = proxyRow;
+        }
+        // Gating por funciones declaradas (solo mostrar si el campo está en targets de alguna función de búsqueda de ítems)
+        let allowSearchUI = false;
+        try{
+          const fSnap = await fnCol.get();
+          const fRows = fSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+          const targetKeySelf = row.key;
+          const targetKeyResolved = proxyTargetKey || row.key;
+          allowSearchUI = fRows.some(fn=> (fn.type==='searchExisting' || fn.type==='searchItems') && Array.isArray(fn.targets) && fn.targets.some(t=> t===targetKeySelf || t===targetKeyResolved));
+        }catch(_){ allowSearchUI = false; }
+        const sfx = sfxSource.specialFunctions && sfxSource.specialFunctions.searchExisting ? sfxSource.specialFunctions.searchExisting : null;
+        document.getElementById('fmSearchEnabled').checked = !!(sfx && sfx.enabled);
+        const fmBy = document.getElementById('fmSearchBy');
+        const selected = sfx && sfx.searchBy ? (Array.isArray(sfx.searchBy)? sfx.searchBy : [sfx.searchBy]) : ['descripcion'];
+        Array.from(fmBy.options).forEach(o=> o.selected = selected.includes(o.value));
+        // Mostrar/ocultar lista según el checking
+        const chk = document.getElementById('fmSearchEnabled');
+        const wrap = document.getElementById('fmSearchByWrap');
+        const cfgRow = document.getElementById('fmSearchConfigRow');
+        if (!allowSearchUI){
+          // Oculta por no estar permitido por targets
+          cfgRow.style.display = 'none';
+          chk.checked = false;
+        } else {
+          cfgRow.style.display = '';
+          const toggleBy = ()=>{ wrap.style.display = chk.checked ? '' : 'none'; };
+          chk.addEventListener('change', toggleBy);
+          toggleBy();
+        }
+        // UI búsqueda: restringir por clave
+        function updateSearchUIForKey(k){
+          const cfgRow = document.getElementById('fmSearchConfigRow');
+          const wrap = document.getElementById('fmSearchByWrap');
+          const chk = document.getElementById('fmSearchEnabled');
+          const isDescripcion = k==='descripcion';
+          const isSku = k==='sku';
+          const isCb = k==='codigoBarra';
+          const isListSearch = (
+            k==='serviceMaterialSearch' || k==='comboComponentSearch' ||
+            k==='serviceComponents' || k==='comboItems' ||
+            (row && (row.fieldType==='search' || row.fieldType==='listWithSearch'))
+          );
+          if (!(isDescripcion||isSku||isCb||isListSearch) || !allowSearchUI){
+            cfgRow.style.display = 'none';
+            chk.checked = false;
+            return;
+          }
+          cfgRow.style.display = '';
+          const toggleBy = ()=>{ wrap.style.display = chk.checked ? '' : 'none'; };
+          chk.removeEventListener('_toggle', chk.__handler||(()=>{}));
+          chk.__handler = toggleBy; chk.addEventListener('_toggle', toggleBy);
+          chk.addEventListener('change', toggleBy);
+          toggleBy();
+          if (isDescripcion){
+            // permitir multiselección (ya está por defecto)
+            fmBy.multiple = true;
+          } else if (isSku){
+            // fuerza SKU
+            fmBy.multiple = false; Array.from(fmBy.options).forEach(o=> o.selected = (o.value==='sku'));
+            wrap.style.display = 'none';
+          } else if (isCb){
+            fmBy.multiple = false; Array.from(fmBy.options).forEach(o=> o.selected = (o.value==='codigoBarra'));
+            wrap.style.display = 'none';
+          } else if (isListSearch){
+            // Para buscadores de lista (componentes/materiales): permitir multiselección
+            fmBy.multiple = true;
+          }
+        }
+        updateSearchUIForKey(row.key||'');
+  // Anclado: preparar opciones y rellenar
+  // Opciones de controladores (cualquier campo excepto el propio)
+  const ancParentSel = document.getElementById('fmAnchorParent');
+  ancParentSel.innerHTML = ctrlOptionsHtml;
+  const ancEnabled = !!(row.anchored && row.anchored.enabled);
+  const ancParentKey = row.anchored?.parentKey || (row.visibleWhen?.fieldKey) || (Array.isArray(row.visibleWhenRules)&&row.visibleWhenRules[0]?.fieldKey) || '';
+  const ancPos = row.anchored?.position || 'after';
+  document.getElementById('fmAnchorEnabled').checked = ancEnabled;
+  ancParentSel.value = ancParentKey || '';
+  document.getElementById('fmAnchorPos').value = ancPos;
+        // Render listas de condiciones
+        const visList = document.getElementById('fmVisCondList'); visList.innerHTML='';
+        const reqList = document.getElementById('fmReqCondList'); reqList.innerHTML='';
+        const vLogic = (row.visibleWhenLogic||'AND'); const rLogic = (row.requiredWhenLogic||'AND');
+        document.getElementById('fmVisLogic').value = vLogic; document.getElementById('fmReqLogic').value = rLogic;
+        const visRules = Array.isArray(row.visibleWhenRules) ? row.visibleWhenRules.slice() : [];
+        const reqRules = Array.isArray(row.requiredWhenRules) ? row.requiredWhenRules.slice() : [];
+        // Compatibilidad: visibleWhen simple
+        if (!visRules.length && row.visibleWhen && row.visibleWhen.fieldKey){
+          visRules.push({ fieldKey: row.visibleWhen.fieldKey, op:'equals', value: (typeof row.visibleWhen.equals==='undefined'?'true': (''+row.visibleWhen.equals)) });
+        }
+        if (!reqRules.length && row.requiredWhen && row.requiredWhen.fieldKey){
+          reqRules.push({ fieldKey: row.requiredWhen.fieldKey, op:'equals', value: (typeof row.requiredWhen.equals==='undefined'?'true': (''+row.requiredWhen.equals)) });
+        }
+        if (!visRules.length) addCondRow(visList, null); else visRules.forEach(r=> addCondRow(visList, r));
+        if (!reqRules.length) addCondRow(reqList, null); else reqRules.forEach(r=> addCondRow(reqList, r));
+        document.getElementById('fmVisAdd').onclick = ()=> addCondRow(visList, null);
+        document.getElementById('fmReqAdd').onclick = ()=> addCondRow(reqList, null);
+  } else {
+        key.value = ''; key.disabled = false;
+        label.value = '';
+        group.value = '';
+        order.value = '';
+        desc.value = '';
+        example.value = '';
+        fmVisible.checked = true;
+        fmRequired.checked = false;
+  document.getElementById('fmSearchEnabled').checked = false;
+  const fmBy = document.getElementById('fmSearchBy');
+        // Por defecto marcamos los tres para búsqueda amplia
+        Array.from(fmBy.options).forEach(o=> o.selected = ['descripcion','sku','codigoBarra'].includes(o.value));
+        document.getElementById('fmFieldType').value = 'text';
+        // Mostrar/ocultar lista según el checking (crear)
+        const chk = document.getElementById('fmSearchEnabled');
+        const wrap = document.getElementById('fmSearchByWrap');
+        const toggleBy = ()=>{ wrap.style.display = chk.checked ? '' : 'none'; };
+        chk.addEventListener('change', toggleBy);
+        toggleBy();
+        // Inicializar listas de condiciones vacías con una fila cada una
+        const visList = document.getElementById('fmVisCondList'); visList.innerHTML='';
+        const reqList = document.getElementById('fmReqCondList'); reqList.innerHTML='';
+        document.getElementById('fmVisLogic').value = 'AND';
+        document.getElementById('fmReqLogic').value = 'AND';
+        addCondRow(visList, null); addCondRow(reqList, null);
+        document.getElementById('fmVisAdd').onclick = ()=> addCondRow(visList, null);
+        document.getElementById('fmReqAdd').onclick = ()=> addCondRow(reqList, null);
+        // Anclado (crear): desactivado por defecto, sin padre
+        const ancParentSel = document.getElementById('fmAnchorParent');
+        ancParentSel.innerHTML = ctrlOptionsHtml;
+        document.getElementById('fmAnchorEnabled').checked = false;
+        document.getElementById('fmAnchorPos').value = 'after';
+      }
+      m.classList.remove('hidden');
+      document.getElementById('fmCancel').onclick = closeFieldModal;
+      document.getElementById('fmSave').onclick = async ()=>{
+        const k = key.value.trim(); const lbl = label.value.trim(); const grp = group.value.trim(); const ord = parseInt(order.value,10);
+        if (!lbl){ alert('Etiqueta requerida'); return; }
+        // Recoger campos seleccionados para búsqueda
+  const fmBy = document.getElementById('fmSearchBy');
+  const selectedFields = Array.from(fmBy?.selectedOptions || []).map(o=>o.value);
+        // Aplicar restricciones por clave para Buscar en Items
+        const rawEnabled = !!document.getElementById('fmSearchEnabled').checked;
+        let sfxPayload = { searchExisting: { enabled: false, searchBy: [] } };
+        if (rawEnabled){
+          const allowed = ['descripcion','sku','codigoBarra','marca','modelo'];
+          const filtered = selectedFields.filter(x=> allowed.includes(x));
+          sfxPayload.searchExisting = { enabled: true, searchBy: filtered.length? filtered : ['descripcion'] };
+        }
+  const fieldType = document.getElementById('fmFieldType').value || 'text';
+  // Anclado
+  const anchorEnabled = !!document.getElementById('fmAnchorEnabled').checked;
+  const anchorParentKey = document.getElementById('fmAnchorParent').value || '';
+  const anchorPos = document.getElementById('fmAnchorPos').value || 'after';
+  let anchored = anchorEnabled && anchorParentKey ? { enabled:true, parentKey: anchorParentKey, position: anchorPos } : { enabled:false };
+        // Condiciones avanzadas
+        const visList = document.getElementById('fmVisCondList');
+        const reqList = document.getElementById('fmReqCondList');
+        const vRules = readCondList(visList);
+        const rRules = readCondList(reqList);
+        const visibleWhenRules = vRules;
+        const visibleWhenLogic = document.getElementById('fmVisLogic').value || 'AND';
+        const requiredWhenRules = rRules;
+        const requiredWhenLogic = document.getElementById('fmReqLogic').value || 'AND';
+        // Compat: generar visibleWhen/requiredWhen simples si hay una sola regla equals
+        let visibleWhen = null; let requiredWhen = null;
+        if (visibleWhenRules.length===1 && (visibleWhenRules[0].op==='equals')){
+          visibleWhen = { fieldKey: visibleWhenRules[0].fieldKey, equals: (visibleWhenRules[0].value||'true') };
+        }
+        if (requiredWhenRules.length===1 && (requiredWhenRules[0].op==='equals')){
+          requiredWhen = { fieldKey: requiredWhenRules[0].fieldKey, equals: (requiredWhenRules[0].value||'true') };
+        }
+        // Auto-anclado seguro: si es codigoBarra y depende de usaCodigoBarra y aún no está anclado, anclar after al padre
+        const firstVisRuleField = (visibleWhenRules[0]?.fieldKey)|| (visibleWhen?.fieldKey)|| '';
+        const currKeyForSave = (mode!=='edit') ? k : (row?.key||'');
+        if ((!anchored || anchored.enabled!==true) && currKeyForSave==='codigoBarra' && firstVisRuleField==='usaCodigoBarra'){
+          anchored = { enabled:true, parentKey:'usaCodigoBarra', position: (anchorPos||'after') };
+        }
+        // Validar y crear en modo "crear"
+        if (mode!=='edit'){
+          if (!k || !/^[a-z0-9_]+$/.test(k)){ alert('Clave requerida, solo minúsculas, números y guion bajo.'); return; }
+          const q = await defsCol.where('key','==',k).limit(1).get();
+          if (!q.empty){ alert('Ya existe un campo con esa clave.'); return; }
+          const now = firebase.firestore.FieldValue.serverTimestamp();
+          const doc = {
+            key: k, label: lbl, group: grp||'otros', description: desc.value||'', example: example.value||'',
+            visible: !!fmVisible.checked, required: !!fmRequired.checked, order: isNaN(ord)? Date.now() : ord,
+            visibleByType: { producto: true, servicio: true, combo: true }, requiredByType: { producto: false, servicio: false, combo: false },
+            created_at: now,
+            specialFunctions: sfxPayload,
+            fieldType,
+            visibleWhen,
+            requiredWhen,
+            visibleWhenRules,
+            visibleWhenLogic,
+            requiredWhenRules,
+            requiredWhenLogic,
+            anchored
+          };
+          const ref = await defsCol.add(doc);
+          fieldRows.push({ id: ref.id, ...doc });
+          // Auto-crear funciones para listas con buscador en Combo: búsqueda por 5 campos + agregar a lista
+          try{
+            if (fieldType==='listWithSearch' && (grp||'')==='combo'){
+              const keySearch = `combo_${k}_searchItems`;
+              const payloadSearch = {
+                key: keySearch,
+                type: 'searchItems',
+                config: { searchBy: ['descripcion','sku','codigoBarra','marca','modelo'] },
+                targets: [k]
+              };
+              await fnCol.add({ ...payloadSearch, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+              const keyAdd = `combo_${k}_onSelectAddToList`;
+              const payloadAdd = { key: keyAdd, type: 'onSelectAddToList', config: { action: 'addToAnchoredList' }, targets: [k] };
+              await fnCol.add({ ...payloadAdd, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+              try{ await renderFunctions(); }catch(_){ }
+              try{ window.parent && window.parent.postMessage({ type:'fieldFunctionsChanged' }, '*'); }catch(_){ }
+            }
+          }catch(_){ /* noop: si falla la auto-creación, el usuario puede crear funciones manualmente */ }
+        } else {
+          const patch = { label: lbl, group: grp||'otros', description: desc.value||'', example: example.value||'', specialFunctions: sfxPayload, fieldType, anchored };
+          if (!isNaN(ord)) patch.order = ord;
+          patch.visibleWhen = visibleWhen; patch.requiredWhen = requiredWhen;
+          patch.visibleWhenRules = visibleWhenRules; patch.visibleWhenLogic = visibleWhenLogic;
+          patch.requiredWhenRules = requiredWhenRules; patch.requiredWhenLogic = requiredWhenLogic;
+          const idx = fieldRows.findIndex(r=>r.id===row.id);
+          await defsCol.doc(row.id).set(patch, { merge:true });
+          if (idx>=0){ fieldRows[idx] = { ...fieldRows[idx], ...patch }; }
+          // Si se está editando un contenedor de lista, reflejar la función en el campo buscador real
+          const proxyMapSave = { serviceComponents: 'serviceMaterialSearch', comboItems: 'comboComponentSearch' };
+          const targetKey = proxyMapSave[row.key] || null;
+          if (targetKey){
+            const targetRow = (fieldRows||[]).find(r=> (r.key||r.id)===targetKey);
+            if (targetRow){
+              try{
+                await defsCol.doc(targetRow.id).set({ specialFunctions: sfxPayload }, { merge:true });
+                const tidx = fieldRows.findIndex(r=> r.id===targetRow.id);
+                if (tidx>=0){ fieldRows[tidx] = { ...fieldRows[tidx], specialFunctions: sfxPayload }; }
+              }catch(e){ console.warn('No se pudo actualizar función en campo buscador asociado', targetKey, e); }
+            }
+          }
+        }
+        renderFields(); updateSummary(); closeFieldModal(); renderVisualEditor(); notifyHost();
+        try{ window.parent && window.parent.postMessage({ type:'fieldFunctionsChanged' }, '*'); }catch(_){ }
+      };
+    }
+    
+    // ========= Editor Visual =========
+    let veSectionSortable = null;
+    let veFieldSortables = {};
+
+    function veCleanupSortables(){
+      try { veSectionSortable?.destroy(); } catch(_){}
+      veSectionSortable = null;
+      Object.values(veFieldSortables).forEach(s=>{ try{s.destroy();}catch(_){}});
+      veFieldSortables = {};
+    }
+
+    async function renderVisualEditor(){
+      const container = document.getElementById('veSections'); if (!container) return;
+      const type = typeSelect.value;
+      const cfg = await fetchTypeCfg(type);
+      await loadSectionDefs();
+      // Ordenar secciones según config
+      const mapCfg = new Map((cfg.sections||[]).map(s=>[s.id, s]));
+      const sections = sectionDefs.slice().sort((a,b)=>{
+        const oa = (mapCfg.get(a.id)?.order ?? 999);
+        const ob = (mapCfg.get(b.id)?.order ?? 999);
+        if (oa!==ob) return oa-ob; return a.id.localeCompare(b.id);
+      });
+      // Render
+      container.innerHTML = sections.map((sec, idx)=>{
+  const sCfg = mapCfg.get(sec.id) || { id: sec.id, enabled: true, visible: false, order: 99, locked: false };
+        const vis = sCfg.visible!==false;
+  const enabled = sCfg.enabled!==false;
+        const locked = !!sCfg.locked;
+        let fields = (fieldRows||[]).filter(r=> r.group===sec.id && r.archived!==true)
+          .sort((a,b)=> ((a.order??9999) - (b.order??9999)) || (a.key||'').localeCompare(b.key||''));
+        // Ocultar visualmente campos legacy de servicio en el editor visual para evitar confusión
+        if (sec.id==='servicio'){
+          const legacyKeys = new Set(['serviceMaterialSearch','serviceComponents','serviceComponentsList']);
+          fields = fields.filter(f=> !legacyKeys.has(f.key) && !(f.fieldType==='search'));
+        }
+        const enabledFields = fields.filter(f=> (f.visibleByType && typeof f.visibleByType[type]!== 'undefined') ? !!f.visibleByType[type] : (f.visible!==false));
+        const disabledFields = fields.filter(f=> (f.visibleByType && typeof f.visibleByType[type]!== 'undefined') ? !f.visibleByType[type] : (f.visible===false));
+        const renderFieldItem = (f)=>{
+          const fr = (f.requiredByType && typeof f.requiredByType[type]!== 'undefined') ? !!f.requiredByType[type] : !!f.required;
+          const keyStr = f.key || f.id || '—';
+          return `<li class="border rounded px-2 py-1 bg-white flex items-center justify-between gap-2" data-id="${f.id}" data-locked="${f.locked? '1':'0'}">
+            <div>
+              <div class="text-sm font-medium whitespace-normal break-words flex items-center gap-2"><span class="inline-flex items-center justify-center w-5 h-5 rounded bg-gray-100 text-gray-700 text-[10px]" title="Orden">${(f.order ?? '')}</span> ${f.label||keyStr}</div>
+              <div class="text-[11px] text-gray-500 break-all">${keyStr}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              ${f.locked
+                ? `<span class=\"text-[11px] inline-flex items-center text-amber-600\" title=\"Bloqueado\"><i class=\"fa fa-lock mr-1\"></i>Req</span>`
+                : `<label class=\"text-[11px] inline-flex items-center\"><input type=\"checkbox\" class=\"ve-field-req mr-1\" data-id=\"${f.id}\" ${fr?'checked':''}>Req</label>`}
+              <button class="px-2 py-1 text-xs rounded bg-gray-100 ve-toggle-lock" data-id="${f.id}" title="${f.locked?'Desbloquear':'Bloquear'}"><i class="fa ${f.locked? 'fa-lock text-amber-600':'fa-lock-open text-gray-500'}"></i></button>
+              <button class="px-2 py-1 text-xs rounded bg-gray-100 ve-edit" data-id="${f.id}"><i class="fa fa-pen"></i></button>
+              <button class="px-2 py-1 text-xs rounded bg-red-500 text-white ve-archive" data-id="${f.id}" title="Archivar"><i class="fa fa-box-archive"></i></button>
+              <span class="cursor-move text-gray-400" title="${f.locked? 'Bloqueado: no se puede arrastrar':'Arrastrar'}"><i class="fa fa-grip-vertical"></i></span>
+            </div>
+          </li>`;
+        };
+        const enabledHtml = enabledFields.map(renderFieldItem).join('');
+        const disabledHtml = disabledFields.map(renderFieldItem).join('');
+        const disSec = locked? 'disabled' : '';
+        const dimCls = enabled ? '' : ' opacity-60';
+        return `<div class="border rounded-lg p-3 bg-gray-50${dimCls}" data-sec="${sec.id}">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <div class="font-medium flex items-center gap-2"><span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-200 text-gray-700 text-xs" title="Posición visual">${idx+1}</span> <span class="whitespace-normal break-words">${sec.name}</span>${enabled?'':`<span class="ml-2 text-[11px] px-2 py-0.5 rounded bg-gray-200 text-gray-700">Deshabilitada</span>`}</div>
+              <div class="text-xs text-gray-500 break-all">${sec.id}</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="text-xs inline-flex items-center" title="Bloquear"><input type="checkbox" class="mr-1 ve-sec-lock" ${locked?'checked':''}> Bloq.</label>
+              <label class="text-xs inline-flex items-center" title="Habilitar sección en el creador"><input type="checkbox" class="mr-1 ve-sec-en" ${enabled?'checked':''} ${disSec}> Habilitada</label>
+              <label class="text-xs inline-flex items-center"><input type="checkbox" class="mr-1 ve-sec-vis" ${vis?'checked':''} ${disSec}> Visible</label>
+              <button class="px-2 py-1 text-xs rounded bg-blue-600 text-white ve-add-field"><i class="fa fa-plus mr-1"></i>Campo</button>
+              <span class="cursor-move text-gray-400" title="Arrastrar sección"><i class="fa fa-grip-vertical"></i></span>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div class="p-2 rounded-md border bg-green-50 border-green-200">
+              <div class="text-[11px] text-green-700 mb-1 font-medium">Habilitados</div>
+              <ul class="space-y-2 ve-field-list ve-enabled min-h-[2rem]" data-sec="${sec.id}" data-list-type="enabled">${enabledHtml||''}</ul>
+            </div>
+            <div class="p-2 rounded-md border bg-rose-50 border-rose-200">
+              <div class="text-[11px] text-rose-700 mb-1 font-medium">Deshabilitados</div>
+              <ul class="space-y-2 ve-field-list ve-disabled min-h-[2rem]" data-sec="${sec.id}" data-list-type="disabled">${disabledHtml||''}</ul>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+
+      // Eventos de toggles y acciones
+      container.querySelectorAll('[data-sec] .ve-sec-vis').forEach(chk=>{
+        chk.addEventListener('change', async (e)=>{
+          const card = e.target.closest('[data-sec]'); const id = card.getAttribute('data-sec');
+          const cfg2 = await fetchTypeCfg(type);
+          const rows = (cfg2.sections||[]).slice();
+          const idx = rows.findIndex(s=>s.id===id);
+          if (idx>=0) rows[idx].visible = !!e.target.checked; else rows.push({ id, enabled:true, visible: !!e.target.checked, order: 99, locked:false });
+          const doc = { type, sections: rows };
+          if (cfg2.id) await typeCfgCol.doc(cfg2.id).set(doc, { merge:true }); else await typeCfgCol.add(doc);
+          updateSummary();
+          notifyHost();
+        });
+      });
+      // Toggle de habilitada
+      container.querySelectorAll('[data-sec] .ve-sec-en').forEach(chk=>{
+        chk.addEventListener('change', async (e)=>{
+          const card = e.target.closest('[data-sec]'); const id = card.getAttribute('data-sec');
+          const cfg2 = await fetchTypeCfg(type);
+          const rows = (cfg2.sections||[]).slice();
+          const idx = rows.findIndex(s=>s.id===id);
+          if (idx>=0) rows[idx].enabled = !!e.target.checked; else rows.push({ id, enabled: !!e.target.checked, visible: true, order: 99, locked:false });
+          const doc = { type, sections: rows };
+          if (cfg2.id) await typeCfgCol.doc(cfg2.id).set(doc, { merge:true }); else await typeCfgCol.add(doc);
+          updateSummary();
+          notifyHost();
+        });
+      });
+      container.querySelectorAll('[data-sec] .ve-sec-lock').forEach(chk=>{
+        chk.addEventListener('change', async (e)=>{
+          const card = e.target.closest('[data-sec]'); const id = card.getAttribute('data-sec');
+          const cfg2 = await fetchTypeCfg(type);
+          const rows = (cfg2.sections||[]).slice();
+          const idx = rows.findIndex(s=>s.id===id);
+          if (idx>=0) rows[idx].locked = !!e.target.checked; else rows.push({ id, visible: true, order: 99, locked: !!e.target.checked });
+          const doc = { type, sections: rows };
+          if (cfg2.id) await typeCfgCol.doc(cfg2.id).set(doc, { merge:true }); else await typeCfgCol.add(doc);
+          renderVisualEditor(); // Para deshabilitar controles si quedó bloqueada
+          notifyHost();
+        });
+      });
+      container.querySelectorAll('[data-sec] .ve-add-field').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+          const secId = e.target.closest('[data-sec]').getAttribute('data-sec');
+          openFieldModal('create');
+          setTimeout(()=>{
+            const grp = document.getElementById('fmGroup');
+            if (grp) grp.value = secId;
+          }, 0);
+        });
+      });
+      container.querySelectorAll('.ve-edit').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const id = btn.getAttribute('data-id');
+          const row = fieldRows.find(r=>r.id===id);
+          if (row) openFieldModal('edit', row);
+        });
+      });
+      container.querySelectorAll('.ve-toggle-lock').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const id = btn.getAttribute('data-id');
+          const row = fieldRows.find(r=>r.id===id); if (!row) return;
+          const locked = !row.locked; await defsCol.doc(id).set({ locked }, { merge:true }); row.locked = locked;
+          renderVisualEditor();
+          updateSummary();
+          notifyHost();
+        });
+      });
+      container.querySelectorAll('.ve-archive').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const id = btn.getAttribute('data-id');
+          const row = fieldRows.find(r=>r.id===id); if (!row) return;
+          try{
+            const key = row.key || row.id;
+            const dependents = (fieldRows||[]).filter(r=> r.id!==row.id && r.archived!==true && (
+              (r.anchored && r.anchored.enabled && r.anchored.parentKey===key) ||
+              (Array.isArray(r.visibleWhenRules) && r.visibleWhenRules.some(rr=> rr.fieldKey===key)) ||
+              (Array.isArray(r.requiredWhenRules) && r.requiredWhenRules.some(rr=> rr.fieldKey===key)) ||
+              (r.visibleWhen && r.visibleWhen.fieldKey===key) ||
+              (r.requiredWhen && r.requiredWhen.fieldKey===key)
+            ));
+            let fnRefs = [];
+            try{
+              const snap = await fnCol.get();
+              fnRefs = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+                .filter(f=> Array.isArray(f.targets) && f.targets.includes(key));
+            }catch(_){ fnRefs = []; }
+            if (dependents.length || fnRefs.length){
+              const depsStr = dependents.slice(0,5).map(d=> d.label||d.key||d.id).join(', ');
+              const fnStr = fnRefs.slice(0,5).map(f=> f.key||f.id).join(', ');
+              alert(`No se puede archivar: hay ${dependents.length} dependiente(s) y ${fnRefs.length} función(es) que lo usan.\n`
+                + (dependents.length? `Campos: ${depsStr}${dependents.length>5?' …':''}\n`: '')
+                + (fnRefs.length? `Funciones: ${fnStr}${fnRefs.length>5?' …':''}\n`: '')
+                + 'Quite esas referencias primero.');
+              return;
+            }
+            if (!confirm('¿Archivar este campo? Puedes restaurarlo editando en Firestore.')) return;
+            await defsCol.doc(id).set({ archived:true, visible:false }, { merge:true });
+            fieldRows = fieldRows.filter(r=> r.id!==id);
+            await renderVisualEditor();
+            renderFields?.(); updateSummary(); notifyHost();
+          }catch(e){ console.warn('ve-archive', e); alert('No se pudo archivar.'); }
+        });
+      });
+      // Nota: la visibilidad ahora se controla por listas (habilitados/deshabilitados)
+      container.querySelectorAll('.ve-field-req').forEach(chk=>{
+        chk.addEventListener('change', async ()=>{
+          const id = chk.getAttribute('data-id');
+          const snap = await defsCol.doc(id).get(); const d = snap.data()||{};
+          const map = Object.assign({ producto:false, servicio:false, combo:false }, d.requiredByType||{});
+          map[type] = !!chk.checked; await defsCol.doc(id).update({ requiredByType: map });
+          updateSummary();
+          notifyHost();
+        });
+      });
+
+      // Drag & drop sortables
+      veCleanupSortables();
+      veSectionSortable = new Sortable(container, {
+        animation: 150,
+        handle: '.fa-grip-vertical',
+        draggable: '[data-sec]',
+        onEnd: async ()=>{
+          // Recalcular orden según posición visual
+          const cards = Array.from(container.querySelectorAll('[data-sec]'));
+          const rows = cards.map((el, idx)=>{
+            const id = el.getAttribute('data-sec');
+            const s = mapCfg.get(id) || { id, visible:true, order: idx+1, locked:false };
+            return { id, visible: s.visible!==false, order: idx+1, locked: !!s.locked };
+          });
+          const cfg2 = await fetchTypeCfg(type);
+          const doc = { type, sections: rows };
+          if (cfg2.id) await typeCfgCol.doc(cfg2.id).set(doc, { merge:true }); else await typeCfgCol.add(doc);
+          renderSections(); // mantener coherencia con tabla superior
+          updateSummary();
+          notifyHost();
+        }
+      });
+      // Field lists
+      container.querySelectorAll('.ve-field-list').forEach(list=>{
+        const secId = list.getAttribute('data-sec');
+        const listType = list.getAttribute('data-list-type');
+        veFieldSortables[`${secId}:${listType}`] = new Sortable(list, {
+          group: 'fields',
+          animation: 150,
+          handle: '.fa-grip-vertical',
+          draggable: 'li',
+          onMove: (evt)=>{
+            // Evitar arrastrar campos bloqueados
+            const li = evt.dragged;
+            if (li && li.getAttribute('data-locked')==='1') return false;
+            return true;
+          },
+          onAdd: async (evt)=>{
+            // Movimiento: actualizar group, orden y visibilidad por tipo según lista destino
+            const siblings = Array.from(evt.to.querySelectorAll('li'));
+            const batch = db.batch();
+            for (let i=0;i<siblings.length;i++){
+              const fid = siblings[i].getAttribute('data-id');
+              const row = fieldRows.find(r=>r.id===fid); if (!row) continue;
+              const map = Object.assign({ producto:true, servicio:true, combo:true }, row.visibleByType||{});
+              map[type] = (listType === 'enabled');
+              batch.update(defsCol.doc(fid), { group: secId, order: i+1, visibleByType: map });
+              row.group = secId; row.order = i+1; row.visibleByType = map;
+            }
+            await batch.commit();
+            const movedId = evt.item?.getAttribute('data-id') || null;
+            await veEnforceAnchors(secId, type, movedId);
+            updateSummary(); notifyHost();
+          },
+          onUpdate: async (evt)=>{
+            // Reorder inside same section
+            const siblings = Array.from(evt.to.querySelectorAll('li'));
+            const batch = db.batch();
+            siblings.forEach((li, i)=>{ const fid = li.getAttribute('data-id'); batch.update(defsCol.doc(fid), { order: i+1 });
+              const row = fieldRows.find(r=>r.id===fid); if (row){ row.order = i+1; } });
+            await batch.commit();
+            const movedId = evt.item?.getAttribute('data-id') || null;
+            await veEnforceAnchors(secId, type, movedId);
+            updateSummary();
+            notifyHost();
+          }
+        });
+      });
+    }
+
+    // Forzar reglas de anclado post-drop en una sección
+    async function veEnforceAnchors(secId, type, focusId){
+      try{
+        const enabledList = document.querySelector(`.ve-field-list.ve-enabled[data-sec="${secId}"]`);
+        const disabledList = document.querySelector(`.ve-field-list.ve-disabled[data-sec="${secId}"]`);
+        if (!enabledList || !disabledList) return;
+        // Mapa por key y por id
+        const byId = new Map(fieldRows.map(r=>[r.id, r]));
+        const byKey = new Map(fieldRows.map(r=>[(r.key||r.id), r]));
+        const processedChildren = new Set();
+        function computeParentVisible(parent){
+          // Prioridad: DOM → datos
+          const inEnabled = !!enabledList.querySelector(`li[data-id="${parent.id}"]`);
+          const inDisabled = !!disabledList.querySelector(`li[data-id="${parent.id}"]`);
+          if (inEnabled) return true;
+          if (inDisabled) return false;
+          const v = (parent.visibleByType && typeof parent.visibleByType[type]!== 'undefined') ? !!parent.visibleByType[type] : (parent.visible!==false);
+          return !!v;
+        }
+        // Helper: aplicar para una lista concreta (enabled o disabled)
+        async function processList(listEl, makeVisible){
+          const batch = db.batch();
+          // 1) Alinear sección y visibilidad: hijos -> padre (una sola vez por hijo)
+          fieldRows.forEach(row=>{
+            const anc = row.anchored; if (!anc || !anc.enabled || !anc.parentKey) return;
+            const parent = byKey.get(anc.parentKey); if (!parent) return;
+            if (processedChildren.has(row.id)) return;
+            const parentVis = computeParentVisible(parent);
+            const map = Object.assign({ producto:true, servicio:true, combo:true }, row.visibleByType||{});
+            const needVis = map[type] !== parentVis;
+            const needGrp = row.group !== parent.group;
+            if (needVis || needGrp){
+              map[type] = parentVis;
+              batch.update(defsCol.doc(row.id), { group: parent.group, visibleByType: map });
+              row.group = parent.group; row.visibleByType = map;
+            }
+            processedChildren.add(row.id);
+          });
+          await batch.commit();
+
+          // 2) Reordenar: padre seguido inmediatamente por todos sus hijos (y subhijos)
+          //    Basado en los datos (fieldRows) ya actualizados, no en el DOM, para incluir
+          //    hijos que acaban de cambiar de lista por herencia.
+          const listMembers = (fieldRows||[])
+            .filter(r=> r.group===secId && ((r.visibleByType && typeof r.visibleByType[type]!== 'undefined') ? !!r.visibleByType[type] : (r.visible!==false)) === !!makeVisible)
+            .sort((a,b)=> ((a.order??9999) - (b.order??9999)) || (a.key||'').localeCompare(b.key||''));
+          const ids = listMembers.map(r=> r.id);
+          const placed = new Set();
+          const childrenByParentKey = new Map();
+          fieldRows.forEach(r=>{
+            const anc = r.anchored; if (!anc || !anc.enabled || !anc.parentKey) return;
+            if (!childrenByParentKey.has(anc.parentKey)) childrenByParentKey.set(anc.parentKey, []);
+            childrenByParentKey.get(anc.parentKey).push(r.id);
+          });
+          // Ordenar hijos por 'order' actual para estabilidad
+          childrenByParentKey.forEach((arr)=> arr.sort((a,b)=> (byId.get(a)?.order||9999)-(byId.get(b)?.order||9999)));
+          const sequence = [];
+          function placeWithChildren(id){
+            if (!ids.includes(id) || placed.has(id)) return; // solo los que están en esta lista
+            sequence.push(id); placed.add(id);
+            // Hijos directos de este id (usando key o id del padre)
+            const parentRow = byId.get(id);
+            const pKey = parentRow?.key || id;
+            const childs = (childrenByParentKey.get(pKey) || []).filter(cid=> ids.includes(cid));
+            for (const cid of childs){
+              sequence.push(cid); placed.add(cid);
+              // Subhijos en cascada
+              placeWithChildren(cid);
+            }
+          }
+          // Priorizar raíces (sin padre dentro de la misma lista) para garantizar cadenas completas padre→hijo→subhijo
+          const idByKey = new Map(fieldRows.map(r=>[(r.key||r.id), r.id]));
+          const roots = ids.filter(id=>{
+            const row = byId.get(id);
+            const pKey = row?.anchored && row.anchored.enabled ? row.anchored.parentKey : null;
+            if (!pKey) return true;
+            const parentId = idByKey.get(pKey);
+            return !parentId || !ids.includes(parentId);
+          });
+          roots.forEach(id=> placeWithChildren(id));
+          // Asegurar que no quede ningún huérfano sin colocar
+          ids.forEach(id=>{ if (!placed.has(id)) placeWithChildren(id); });
+          // 3) Persistir nuevo orden acorde a la secuencia calculada
+          const batch2 = db.batch();
+          sequence.forEach((fid, i)=>{ batch2.update(defsCol.doc(fid), { order: i+1 }); const fr=byId.get(fid); if(fr) fr.order=i+1; });
+          await batch2.commit();
+        }
+        // Procesar ambas listas
+        await processList(enabledList, true);
+        await processList(disabledList, false);
+        // Re-render para reflejar movimientos entre listas si los hubo
+        await renderVisualEditor();
+        // Resaltado del grupo padre + hijos
+        try{
+          const focusRow = focusId ? byId.get(focusId) : null;
+          let parentRow = null;
+          if (focusRow){
+            if (focusRow.anchored && focusRow.anchored.enabled && focusRow.anchored.parentKey){
+              parentRow = byKey.get(focusRow.anchored.parentKey) || null;
+            } else {
+              // Si el foco es potencial padre (otros tienen parentKey = su key)
+              const hasChildren = fieldRows.some(r=> r.anchored && r.anchored.enabled && r.anchored.parentKey === (focusRow.key||focusRow.id));
+              parentRow = hasChildren ? focusRow : null;
+            }
+          }
+          if (parentRow){
+            const sec = parentRow.group || secId;
+            const listEls = [
+              document.querySelector(`.ve-field-list.ve-enabled[data-sec="${sec}"]`),
+              document.querySelector(`.ve-field-list.ve-disabled[data-sec="${sec}"]`)
+            ].filter(Boolean);
+            const pKey = parentRow.key || parentRow.id;
+            const childIds = fieldRows.filter(r=> r.anchored && r.anchored.enabled && r.anchored.parentKey===pKey).map(r=> r.id);
+            listEls.forEach(listEl=>{
+              const pLi = listEl.querySelector(`li[data-id="${parentRow.id}"]`); if (pLi){ pLi.classList.add('ve-flash'); setTimeout(()=> pLi.classList.remove('ve-flash'), 1200); }
+              childIds.forEach(cid=>{ const cLi = listEl.querySelector(`li[data-id="${cid}"]`); if (cLi){ cLi.classList.add('ve-flash'); setTimeout(()=> cLi.classList.remove('ve-flash'), 1200); } });
+            });
+          }
+        }catch(_){ /* no-op visual */ }
+      }catch(e){ console.warn('veEnforceAnchors', e); }
+    }
+
+    // ========= Gestor de Funciones =========
+    async function renderFunctions(){
+      try{
+        const tb = document.getElementById('fnTable'); if (!tb) return;
+        const snap = await fnCol.orderBy('key').get();
+        const rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        tb.innerHTML = rows.map(r=>{
+          const type = (r.type==='searchExisting') ? 'searchItems' : (r.type||'-');
+          let cfgStr = '-';
+          if (type==='searchItems') cfgStr = `searchBy=[${(Array.isArray(r.config?.searchBy)? r.config.searchBy.join(', ') : (r.config?.searchBy||''))}]`;
+          if (type==='suggestDistinct') cfgStr = `distinctField=${r.config?.field||''}`;
+          if (type==='onSelectAddToList') cfgStr = `onSelect=addToAnchoredList`;
+          const targets = Array.isArray(r.targets) ? r.targets.join(', ') : '';
+          const tgtStr = targets ? `<div class='text-[11px] text-gray-500'>→ campos: [${targets}]</div>` : '';
+          return `<tr data-id="${r.id}"><td class="p-2">${r.key}</td><td class="p-2">${type}</td><td class="p-2">${cfgStr}${tgtStr}</td><td class="p-2 text-center"><button class="px-2 py-1 bg-gray-100 rounded fn-edit">Editar</button> <button class="px-2 py-1 bg-red-500 text-white rounded fn-del">Eliminar</button></td></tr>`;
+        }).join('') || '<tr><td colspan="4" class="p-2 text-center text-gray-500">Sin funciones.</td></tr>';
+      }catch(e){ console.warn('renderFunctions', e); }
+    }
+    // ========= Gestor de Acciones (onSelect*) =========
+    async function renderActions(){
+      try{
+        const tb = document.getElementById('actionsTable'); if (!tb) return;
+        const snap = await fnCol.orderBy('key').get();
+        const rows = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+          .filter(r=> typeof r.type==='string' && r.type.startsWith('onSelect'));
+        tb.innerHTML = rows.map(r=>{
+          const type = r.type || '-';
+          const targets = Array.isArray(r.targets) ? r.targets.join(', ') : '';
+          return `<tr data-id="${r.id}"><td class="p-2">${r.key}</td><td class="p-2">${type}</td><td class="p-2">${targets? '['+targets+']':'—'}</td><td class="p-2 text-center"><button class="px-2 py-1 bg-gray-100 rounded act-edit">Editar</button> <button class="px-2 py-1 bg-red-500 text-white rounded act-del">Eliminar</button></td></tr>`;
+        }).join('') || '<tr><td colspan="4" class="p-2 text-center text-gray-500">Sin acciones.</td></tr>';
+      }catch(e){ console.warn('renderActions', e); }
+    }
+    // --- Modal de Función ---
+    let fnModal = null;
+    function ensureFnModal(){
+      if (fnModal) return fnModal;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `
+      <div id="fnModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg w-full max-w-md p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-semibold">Función</h3>
+            <button id="fnClose" class="px-2 py-1 bg-gray-200 rounded">Cerrar</button>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs text-gray-600">Clave (slug)</label>
+              <input id="fmk" type="text" class="border rounded px-2 py-1 w-full" placeholder="mi_funcion">
+            </div>
+            <div>
+              <label class="text-xs text-gray-600">Tipo</label>
+              <select id="fmt" class="border rounded px-2 py-1 w-full bg-white">
+                <option value="searchItems">Buscar Ítems</option>
+                <option value="suggestDistinct">Sugerir valores de campo</option>
+                <option value="onSelectAddToList">Al seleccionar, agregar a lista</option>
+              </select>
+            </div>
+            <div id="fnCfgSearchItems">
+              <label class="text-xs text-gray-600">Buscar por campo(s)</label>
+              <select id="fmb" multiple size="5" class="border rounded px-2 py-1 w-full bg-white">
+                <option value="descripcion">descripcion</option>
+                <option value="sku">sku</option>
+                <option value="codigoBarra">codigoBarra</option>
+                <option value="marca">marca</option>
+                <option value="modelo">modelo</option>
+              </select>
+              <div class="text-[11px] text-gray-500 mt-1">Puede seleccionar uno o varios.</div>
+            </div>
+            <div id="fnCfgSuggestDistinct" class="hidden">
+              <label class="text-xs text-gray-600">Campo a sugerir</label>
+              <select id="fmdistinct" class="border rounded px-2 py-1 w-full bg-white">
+                <option value="marca">marca</option>
+                <option value="modelo">modelo</option>
+              </select>
+              <div class="text-[11px] text-gray-500 mt-1">Se sugerirán valores existentes de ese campo en la colección de ítems.</div>
+            </div>
+            <div id="fnCfgOnSelect" class="hidden text-[12px] text-gray-600">
+              Sin configuración adicional. Al adjuntarla a un buscador (por ejemplo, componentes/materiales), Enter o click agregará el ítem a la lista anclada.
+            </div>
+            <div>
+              <label class="text-xs text-gray-600">Aplicar a campos</label>
+              <select id="fmtargets" multiple size="6" class="border rounded px-2 py-1 w-full bg-white"></select>
+              <div class="text-[11px] text-gray-500 mt-1">Seleccione los campos del formulario (incluye buscadores de componentes) donde aplicar esta función.</div>
+            </div>
+          </div>
+          <div class="mt-4 flex justify-end gap-2">
+            <button id="fnSave" class="px-3 py-1.5 bg-blue-600 text-white rounded">Guardar</button>
+          </div>
+        </div>
+      </div>`;
+      document.body.appendChild(wrap);
+      fnModal = document.getElementById('fnModal');
+      return fnModal;
+    }
+    function openFnModal(row){
+      const m = ensureFnModal();
+      const k = document.getElementById('fmk');
+      const b = document.getElementById('fmb');
+      const t = document.getElementById('fmt');
+      const cfgSI = document.getElementById('fnCfgSearchItems');
+      const cfgSD = document.getElementById('fnCfgSuggestDistinct');
+      const cfgOS = document.getElementById('fnCfgOnSelect');
+      const distinctSel = document.getElementById('fmdistinct');
+      const tsel = document.getElementById('fmtargets');
+      // Poblar lista de campos disponibles (ordenados por grupo/orden)
+      try{
+        const options = (fieldRows||[]).filter(r=> r.archived!==true).sort((a,b)=> (a.group||'').localeCompare(b.group||'') || (a.order??9999)-(b.order??9999))
+          .map(r=> `<option value="${r.key||r.id}">${r.group||'-'} · ${(r.label||r.key||r.id)}</option>`).join('');
+        tsel.innerHTML = options;
+      }catch(_){ tsel.innerHTML=''; }
+      function toggleTypeUI(){
+        const type = t.value;
+        cfgSI.classList.toggle('hidden', type!=='searchItems');
+        cfgSD.classList.toggle('hidden', type!=='suggestDistinct');
+        cfgOS.classList.toggle('hidden', type!=='onSelectAddToList');
+      }
+      t.onchange = toggleTypeUI;
+      if (row){
+        k.value = row.key||''; k.disabled=false;
+        const type = (row.type==='searchExisting') ? 'searchItems' : (row.type||'searchItems');
+        t.value = type;
+        toggleTypeUI();
+        const sel = Array.isArray(row.config?.searchBy)? row.config.searchBy : (row.config?.searchBy? [row.config.searchBy] : ['descripcion']);
+        Array.from(b.options).forEach(o=> o.selected = sel.includes(o.value));
+        if (row.type==='suggestDistinct' || type==='suggestDistinct'){
+          if (row.config?.field){ distinctSel.value = row.config.field; }
+        }
+        const tgt = Array.isArray(row.targets)? row.targets : [];
+        Array.from(tsel.options).forEach(o=> o.selected = tgt.includes(o.value));
+        m.dataset.id = row.id;
+      } else {
+        k.value = ''; k.disabled=false; t.value='searchItems'; toggleTypeUI();
+        Array.from(b.options).forEach(o=> o.selected = ['descripcion','sku','codigoBarra'].includes(o.value));
+        Array.from(tsel.options).forEach(o=> o.selected = false);
+        m.dataset.id = '';
+      }
+      m.classList.remove('hidden'); m.classList.add('flex');
+      document.getElementById('fnClose').onclick = ()=>{ m.classList.add('hidden'); m.classList.remove('flex'); };
+      document.getElementById('fnSave').onclick = async ()=>{
+        try{
+          const key = (k.value||'').trim(); if (!key) return alert('Clave requerida');
+          const type = t.value || 'searchItems';
+          const targets = Array.from(tsel.selectedOptions).map(o=>o.value);
+          let payload = { key, type, config:{}, targets };
+          if (type==='searchItems'){
+            const sel = Array.from(b.selectedOptions).map(o=>o.value);
+            payload.config = { searchBy: sel };
+          } else if (type==='suggestDistinct'){
+            payload.config = { field: distinctSel.value||'marca' };
+          } else if (type==='onSelectAddToList'){
+            payload.config = { action: 'addToAnchoredList' };
+          }
+          if (m.dataset.id){ await fnCol.doc(m.dataset.id).set(payload, { merge:true }); }
+          else { await fnCol.add({ ...payload, created_at: firebase.firestore.FieldValue.serverTimestamp() }); }
+          await Promise.all([renderFunctions(), renderActions()]);
+          m.classList.add('hidden'); m.classList.remove('flex');
+          try{ window.parent && window.parent.postMessage({ type:'fieldFunctionsChanged' }, '*'); }catch(_){ }
+        }catch(e){ alert('No se pudo guardar la función'); }
+      };
+    }
+    document.getElementById('fnNew')?.addEventListener('click', ()=> openFnModal(null));
+    document.getElementById('actionNew')?.addEventListener('click', ()=> { openFnModal(null); try{ const t = document.getElementById('fmt'); t.value = 'onSelectAddToList'; t.dispatchEvent(new Event('change')); }catch(_){ } });
+    document.addEventListener('click', async (e)=>{
+      const tr = e.target.closest('#fnTable tr[data-id]'); if (!tr) return;
+      const id = tr.getAttribute('data-id');
+      if (e.target.classList.contains('fn-del')){
+        if (!confirm('¿Eliminar esta función?')) return;
+        await fnCol.doc(id).delete(); await Promise.all([renderFunctions(), renderActions()]);
+        try{ window.parent && window.parent.postMessage({ type:'fieldFunctionsChanged' }, '*'); }catch(_){ }
+        return;
+      }
+      if (e.target.classList.contains('fn-edit')){
+        try{ const snap = await fnCol.doc(id).get(); if (!snap.exists) return; openFnModal({ id, ...snap.data() }); }catch(_){ alert('No se pudo editar.'); }
+      }
+    });
+    document.addEventListener('click', async (e)=>{
+      const tr = e.target.closest('#actionsTable tr[data-id]'); if (!tr) return;
+      const id = tr.getAttribute('data-id');
+      if (e.target.classList.contains('act-del')){
+        if (!confirm('¿Eliminar esta acción?')) return;
+        await fnCol.doc(id).delete(); await Promise.all([renderActions(), renderFunctions()]);
+        try{ window.parent && window.parent.postMessage({ type:'fieldFunctionsChanged' }, '*'); }catch(_){ }
+        return;
+      }
+      if (e.target.classList.contains('act-edit')){
+        try{ const snap = await fnCol.doc(id).get(); if (!snap.exists) return; openFnModal({ id, ...snap.data() }); }catch(_){ alert('No se pudo editar.'); }
+      }
+    });
+  </script>
+</body>
+</html>
