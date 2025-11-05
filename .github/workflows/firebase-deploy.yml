@@ -1,4 +1,4 @@
-name: Deploy to Firebase Hosting
+name: Deploy to Firebase Hosting (Service Account)
 
 on:
   push:
@@ -21,14 +21,31 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Write Service Account JSON
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT}" ]; then
+            echo "Falta el secreto FIREBASE_SERVICE_ACCOUNT en GitHub (Settings > Secrets and variables > Actions)." >&2
+            exit 1
+          fi
+          echo "${FIREBASE_SERVICE_ACCOUNT}" > $GITHUB_WORKSPACE/sa.json
+          echo "Service account JSON escrito en sa.json"
+
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
       - name: Firebase CLI version
         run: firebase --version
 
-      - name: Deploy to Firebase Hosting + Rules
+      - name: Deploy Hosting + Rules (using Service Account)
         env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/sa.json
         run: |
           firebase deploy --only hosting,firestore:rules,storage:rules --project sistema-productividad-equipo --non-interactive
+
+      - name: Cleanup credentials
+        if: always()
+        run: |
+          rm -f $GITHUB_WORKSPACE/sa.json || true
