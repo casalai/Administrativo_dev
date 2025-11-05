@@ -8,10 +8,10 @@
       "**/node_modules/**"
     ],
     "redirects": [
-      { "source": "/index.html", "destination": "/esqueleto.html", "type": 301 }
+      { "source": "/index.html", "destination": "/Items_SeccionesPorTipo.html", "type": 301 }
     ],
     "rewrites": [
-      { "source": "/", "destination": "/esqueleto.html" }
+      { "source": "/", "destination": "/Items_SeccionesPorTipo.html" }
     ]
   },
   "firestore": {
