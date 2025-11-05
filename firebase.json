@@ -12,6 +12,14 @@
     ],
     "rewrites": [
       { "source": "/", "destination": "/Items_SeccionesPorTipo.html" }
+    ],
+    "headers": [
+      {
+        "source": "**/*.html",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache" }
+        ]
+      }
     ]
   },
   "firestore": {
